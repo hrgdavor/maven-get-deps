@@ -1,0 +1,68 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up GraalVM
+        uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '21'
+          distribution: 'graalvm'
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          native-image-job-reports: 'true'
+
+      - name: Build with Maven
+        run: mvn clean package -Pnative -DskipTests
+
+      - name: Prepare Artifacts
+        shell: bash
+        run: |
+          mkdir -p release-artifacts
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cp target/maven-get-deps.exe release-artifacts/maven-get-deps-windows-x64.exe
+          else
+            cp target/maven-get-deps release-artifacts/maven-get-deps-linux-x64
+            cp target/maven-get-deps-*-cli.jar release-artifacts/maven-get-deps-cli.jar
+          fi
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-${{ matrix.os }}
+          path: release-artifacts/*
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            release-artifacts/*.jar
+            release-artifacts/maven-get-deps-linux-x64
+            release-artifacts/maven-get-deps-windows-x64.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,162 @@
+{
+  "reflection": [
+    {
+      "type": "hr.hrg.maven.getdeps.Main",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "main",
+          "parameterTypes": [
+            "java.lang.String[]"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.lang.Boolean",
+      "jniAccessible": true,
+      "methods": [
+        {
+          "name": "getBoolean",
+          "parameterTypes": [
+            "java.lang.String"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "java.lang.String[]"
+    },
+    {
+      "type": "org.apache.maven.model.Build",
+      "methods": [
+        {
+          "name": "getOutputDirectory",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.apache.maven.model.BuildBase",
+      "methods": [
+        {
+          "name": "getDirectory",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.apache.maven.model.Model",
+      "methods": [
+        {
+          "name": "getArtifactId",
+          "parameterTypes": []
+        },
+        {
+          "name": "getBuild",
+          "parameterTypes": []
+        },
+        {
+          "name": "getDescription",
+          "parameterTypes": []
+        },
+        {
+          "name": "getGroupId",
+          "parameterTypes": []
+        },
+        {
+          "name": "getName",
+          "parameterTypes": []
+        },
+        {
+          "name": "getOrganization",
+          "parameterTypes": []
+        },
+        {
+          "name": "getPackaging",
+          "parameterTypes": []
+        },
+        {
+          "name": "getScm",
+          "parameterTypes": []
+        },
+        {
+          "name": "getUrl",
+          "parameterTypes": []
+        },
+        {
+          "name": "getVersion",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.apache.maven.model.ModelBase",
+      "methods": [
+        {
+          "name": "getReporting",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.apache.maven.model.Organization",
+      "methods": [
+        {
+          "name": "getName",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.apache.maven.model.Reporting",
+      "methods": [
+        {
+          "name": "getOutputDirectory",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "org.apache.maven.model.Scm",
+      "methods": [
+        {
+          "name": "getTag",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "sun.launcher.LauncherHelper",
+      "jniAccessible": true,
+      "fields": [
+        {
+          "name": "isStaticMain"
+        },
+        {
+          "name": "noArgMain"
+        }
+      ],
+      "methods": [
+        {
+          "name": "getApplicationClass",
+          "parameterTypes": []
+        }
+      ]
+    }
+  ],
+  "resources": [
+    {
+      "glob": "META-INF/services/java.net.spi.InetAddressResolverProvider"
+    },
+    {
+      "glob": "org/apache/maven/model/pom-4.0.0.xml"
+    },
+    {
+      "glob": "org/slf4j/impl/StaticLoggerBinder.class"
+    },
+    {
+      "glob": "simplelogger.properties"
+    }
+  ]
+}

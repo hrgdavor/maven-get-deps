@@ -1,0 +1,7 @@
+target
+test-m2
+test-m2-dest
+cp.txt
+dependency-reduced-pom.xml
+report-aligned.md
+test-temp-m2
