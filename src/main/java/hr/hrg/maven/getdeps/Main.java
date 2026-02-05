@@ -16,8 +16,25 @@ import java.util.stream.Collectors;
 
 public class Main {
 
+    public static final String VERSION;
+
+    static {
+        String version = "unknown";
+        try (java.io.InputStream is = Main.class.getResourceAsStream("/app.properties")) {
+            if (is != null) {
+                java.util.Properties props = new java.util.Properties();
+                props.load(is);
+                version = props.getProperty("version", "unknown");
+            }
+        } catch (java.io.IOException e) {
+            // ignore
+        }
+        VERSION = version;
+    }
+
     public static void main(String[] args) {
         Options options = new Options();
+        options.addOption("v", "version", false, "Show version");
 
         Option destDirOpt = new Option("d", "dest-dir", true,
                 "Destination directory for copies (relative paths in output will be relative to this)");
@@ -45,6 +62,11 @@ public class Main {
 
         try {
             CommandLine cmd = parser.parse(options, args);
+
+            if (cmd.hasOption("version")) {
+                System.out.println("maven-get-deps version: " + VERSION);
+                return;
+            }
 
             String destDir = cmd.getOptionValue("dest-dir");
             String pomPath = cmd.getOptionValue("pom", "pom.xml");

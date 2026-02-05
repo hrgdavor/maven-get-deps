@@ -150,6 +150,8 @@ This is how it looks like for this project (at the time of writing):
 
 # Build
 
+To downlaod latest release artifacts (CLI-jar, win exe, linux binary) with script use this url https://api.github.com/repos/hrgdavor/maven-get-deps/releases/latest and parse the JSON.
+
 To build the project, ensure you have Java 17+ and Maven installed.
 
 ```powershell
@@ -242,21 +244,4 @@ The project uses the **GraalVM Tracing Agent** to capture reflection and resourc
     copy agent-output/* src/main/resources/META-INF/native-image/io.github.hrgdavor/maven-get-deps/
     ```
 3.  **Rebuild**: Run the native build again. The plugin will automatically pick up configurations from `META-INF/native-image`.
-
-## Publishing to Maven Central
-
-This project is configured for modern publishing via the [Sonatype Central Portal](https://central.sonatype.com/).
-
-### Prerequisites
-1.  **Sonatype Account**: Log in to the Portal (GitHub SSO recommended).
-2.  **Namespace**: Ensure `io.github.hrgdavor` is verified (automatic via GitHub SSO).
-3.  **GPG Key**: Artifacts must be signed. Generate a key and publish it to a keyserver.
-4.  **Credentials**: Add your Central Portal token to your `~/.m2/settings.xml` under the server ID `central`.
-
-### Steps
-Run the following to build, sign, and upload to the Portal:
-```powershell
-mvn clean deploy -DskipTests
-```
-The `central-publishing-maven-plugin` will automatically bundle and upload your artifacts to the Portal for final review/release.
 
