@@ -52,63 +52,46 @@ $env:CLASSPATH = $CP ; java com.example.Main
 
 >Notice, I have just learned while doing this project (something I should have know ages ago) that java will look if CLASSPATH variable is set and use it. This removes noise of the huge classpath from process view when using `ps`, and may have some other benefits.
 
-## Usage
+# Download
 
-### Standalone CLI Usage
+Manually download from https://github.com/hrgdavor/maven-get-deps/releases.
 
-Run the tool using `java -jar`:
+- `maven-get-deps-linux-x64.tar.gz` generic linux binary in tar.gz
+- `maven-get-deps-windows-x64.zip` - windows in zip file
+- `maven-get-deps-cli.jar` - fat jar that can be executed with `java -jar`
+
+To automate download of latest release artifacts (CLI-jar, win64 exe, Linux binary) with script you can use this URL https://api.github.com/repos/hrgdavor/maven-get-deps/releases/latest and parse the JSON.
+
+# Standalone CLI Usage
+
+Run the tool binary for linux/windows or using `java -jar target/maven-get-deps-1.0.0-cli.jar` and add parameters:
 
 ```powershell
-java -jar target/maven-get-deps-1.0.0-cli.jar --pom <YOUR_POM_PATH> [--dest-dir <DEST_PATH>] [--cache <CACHE_M2_PATH>] [--no-copy]
+--pom <YOUR_POM_PATH> [--dest-dir <DEST_PATH>] [--cache <CACHE_M2_PATH>] [--no-copy]
 ```
 
-#### Arguments
+### Arguments
 
-- `-p, --pom <arg>`: **(Required)** Path to the `pom.xml` file to analyze.
-- `-d, --dest-dir <arg>`: (Optional) Destination directory for copies. If provided, paths in the output will be relative to this directory.
-- `-c, --cache <arg>`: (Optional) Local repository to use as a **source**. Defaults to `~/.m2/repository`.
+- `-p, --pom <arg>`:  (default `pom.xml`) Path to the pom  to analyze.
+- `-o, --output <arg>`: (Optional) Path to a file for the dependency list, or will be printed out.
+- `-d, --dest-dir <arg>`: (Optional) Destination directory for jar files. 
 - `-n, --no-copy`: (Optional) Disable copying. Even if `dest-dir` is provided, files will not be copied (only path relativization will use it).
-- `-o, --output <arg>`: (Optional) Path to a file for the dependency list.
+- `-c, --cache <arg>`: (default  `~/.m2/repository`) Local repository to use as a **source**.
 - `-s, --scopes <arg>`: (Optional, default: `compile,runtime`) Comma-separated list of scopes to include.
+- `--report` - (Optional) Path to a file to generate a detailed Markdown report of dependency sizes
 
 #### Example
 
 ```powershell
-# Default: List paths relative to your ~/.m2/repository (no copying)
+# Default: List paths relative to repositry root (no copying)
 java -jar target/maven-get-deps-1.0.0-cli.jar --pom pom.xml
 
-# Copy to a separate folder and list paths relative to it
+# Copy to a separate folder and list paths relative to repositry root
 java -jar target/maven-get-deps-1.0.0-cli.jar --pom pom.xml --dest-dir ./out
-```
-
-## Maven Plugin Usage
-
-Once installed to your local repository (via `mvn install`), you can run the tool as a Maven plugin goal:
-
-```powershell
-mvn io.github.hrgdavor:maven-get-deps:1.0.0:get-deps [-DdestDir=<DEST_PATH>] [-DcopyJars=true] [-DoutputFile=<OUTPUT_FILE>]
-```
-
-### Goal Parameters
-
-- `destDir`: (Optional) A separate directory for listing/copying. If provided, paths will be relative to this folder. If not provided, paths are relative to your local Maven repository.
-- `copyJars`: (Optional, default: `false`) Whether to copy dependencies from your local Maven repo to `destDir`. (Only works if `destDir` is provided).
-- `outputFile`: (Optional) Save the list to a file.
-- `scopes`: (Optional, default: `compile,runtime`) Scopes to include.
-
-### Example
-
-```powershell
-# Default: List all runtime dependencies relative to your .m2
-mvn io.github.hrgdavor:maven-get-deps:get-deps
-
-# Copy runtime dependencies to a standalone folder
-mvn io.github.hrgdavor:maven-get-deps:get-deps -DdestDir=target/copy -DcopyJars=true
 ```
 
 ## Dependency Size Report
 
-You can generate a detailed Markdown report of dependency sizes using:
 - **CLI**: `--report report.md`
 - **Maven Plugin**: `-DreportFile=report.md`
 
@@ -138,6 +121,33 @@ This is how it looks like for this project (at the time of writing):
 
 > Total size: 1297940 bytes (1.24 MB)
 
+# Maven Plugin Usage
+
+Once installed to your local repository (via `mvn install`), you can run the tool as a Maven plugin goal:
+
+```powershell
+mvn io.github.hrgdavor:maven-get-deps:1.0.0:get-deps [-DdestDir=<DEST_PATH>] [-DcopyJars=true] [-DoutputFile=<OUTPUT_FILE>]
+```
+
+### Goal Parameters
+
+- `destDir`: (Optional) A separate directory for listing/copying. If provided, paths will be relative to this folder. If not provided, paths are relative to your local Maven repository.
+- `copyJars`: (Optional, default: `false`) Whether to copy dependencies from your local Maven repo to `destDir`. (Only works if `destDir` is provided).
+- `outputFile`: (Optional) Save the list to a file.
+- `scopes`: (Optional, default: `compile,runtime`) Scopes to include.
+- `reportFile` : (Optional) Path to a file to generate a detailed Markdown report of dependency sizes
+
+### Example
+
+```powershell
+# Default: List all runtime dependencies relative to your .m2
+mvn io.github.hrgdavor:maven-get-deps:get-deps
+
+# Copy runtime dependencies to a standalone folder
+mvn io.github.hrgdavor:maven-get-deps:get-deps -DdestDir=target/copy -DcopyJars=true
+```
+
+
 # How the tool works
 
 - **Source (Cache)**: This is your local Maven repository (defaults to `~/.m2/repository`). The tool always uses this as the primary source for JARs and POMs to avoid redundant downloads.
@@ -150,8 +160,6 @@ This is how it looks like for this project (at the time of writing):
 
 # Build
 
-To downlaod latest release artifacts (CLI-jar, win exe, linux binary) with script use this url https://api.github.com/repos/hrgdavor/maven-get-deps/releases/latest and parse the JSON.
-
 To build the project, ensure you have Java 17+ and Maven installed.
 
 ```powershell
@@ -159,7 +167,7 @@ $env:JAVA_HOME = "C:\Program Files\Java\jdk-17"
 mvn clean package -DskipTests
 ```
 
-### GraalVM Native Image Build
+# GraalVM Native Image Build
 
 On windows difference to run the tool on pom.xml of this project is significant (5x). 
 - 300ms -  `Measure-Command { java -jar .\target\maven-get-deps-1.0.0-cli.jar}`
