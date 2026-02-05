@@ -32,9 +32,9 @@ jobs:
         run: |
           mkdir -p release-artifacts
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            cp target/maven-get-deps.exe release-artifacts/maven-get-deps-windows-x64.exe
+            7z a release-artifacts/maven-get-deps-windows-x64.zip ./target/maven-get-deps.exe
           else
-            cp target/maven-get-deps release-artifacts/maven-get-deps-linux-x64
+            tar -czf release-artifacts/maven-get-deps-linux-x64.tar.gz -C target maven-get-deps
             cp target/maven-get-deps-*-cli.jar release-artifacts/maven-get-deps-cli.jar
           fi
 
@@ -62,7 +62,7 @@ jobs:
         with:
           files: |
             release-artifacts/*.jar
-            release-artifacts/maven-get-deps-linux-x64
-            release-artifacts/maven-get-deps-windows-x64.exe
+            release-artifacts/*.tar.gz
+            release-artifacts/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
