@@ -1,162 +1,1280 @@
 {
-  "reflection": [
-    {
-      "type": "hr.hrg.maven.getdeps.Main",
-      "jniAccessible": true,
-      "methods": [
-        {
-          "name": "main",
-          "parameterTypes": [
-            "java.lang.String[]"
-          ]
-        }
-      ]
-    },
-    {
-      "type": "java.lang.Boolean",
-      "jniAccessible": true,
-      "methods": [
-        {
-          "name": "getBoolean",
-          "parameterTypes": [
-            "java.lang.String"
-          ]
-        }
-      ]
-    },
-    {
-      "type": "java.lang.String[]"
-    },
-    {
-      "type": "org.apache.maven.model.Build",
-      "methods": [
-        {
-          "name": "getOutputDirectory",
-          "parameterTypes": []
-        }
-      ]
-    },
-    {
-      "type": "org.apache.maven.model.BuildBase",
-      "methods": [
-        {
-          "name": "getDirectory",
-          "parameterTypes": []
-        }
-      ]
-    },
-    {
-      "type": "org.apache.maven.model.Model",
-      "methods": [
-        {
-          "name": "getArtifactId",
-          "parameterTypes": []
-        },
-        {
-          "name": "getBuild",
-          "parameterTypes": []
-        },
-        {
-          "name": "getDescription",
-          "parameterTypes": []
-        },
-        {
-          "name": "getGroupId",
-          "parameterTypes": []
-        },
-        {
-          "name": "getName",
-          "parameterTypes": []
-        },
-        {
-          "name": "getOrganization",
-          "parameterTypes": []
-        },
-        {
-          "name": "getPackaging",
-          "parameterTypes": []
-        },
-        {
-          "name": "getScm",
-          "parameterTypes": []
-        },
-        {
-          "name": "getUrl",
-          "parameterTypes": []
-        },
-        {
-          "name": "getVersion",
-          "parameterTypes": []
-        }
-      ]
-    },
-    {
-      "type": "org.apache.maven.model.ModelBase",
-      "methods": [
-        {
-          "name": "getReporting",
-          "parameterTypes": []
-        }
-      ]
-    },
-    {
-      "type": "org.apache.maven.model.Organization",
-      "methods": [
-        {
-          "name": "getName",
-          "parameterTypes": []
-        }
-      ]
-    },
-    {
-      "type": "org.apache.maven.model.Reporting",
-      "methods": [
-        {
-          "name": "getOutputDirectory",
-          "parameterTypes": []
-        }
-      ]
-    },
-    {
-      "type": "org.apache.maven.model.Scm",
-      "methods": [
-        {
-          "name": "getTag",
-          "parameterTypes": []
-        }
-      ]
-    },
-    {
-      "type": "sun.launcher.LauncherHelper",
-      "jniAccessible": true,
-      "fields": [
-        {
-          "name": "isStaticMain"
-        },
-        {
-          "name": "noArgMain"
-        }
-      ],
-      "methods": [
-        {
-          "name": "getApplicationClass",
-          "parameterTypes": []
-        }
-      ]
-    }
-  ],
-  "resources": [
-    {
-      "glob": "META-INF/services/java.net.spi.InetAddressResolverProvider"
-    },
-    {
-      "glob": "org/apache/maven/model/pom-4.0.0.xml"
-    },
-    {
-      "glob": "org/slf4j/impl/StaticLoggerBinder.class"
-    },
-    {
-      "glob": "simplelogger.properties"
-    }
-  ]
+    "reflection":  [
+                       {
+                           "type":  "boolean[]"
+                       },
+                       {
+                           "type":  "byte[]"
+                       },
+                       {
+                           "type":  "char[]"
+                       },
+                       {
+                           "type":  "com.fasterxml.jackson.databind.ext.Java7SupportImpl",
+                           "methods":  [
+                                           {
+                                               "name":  "\u003cinit\u003e",
+                                               "parameterTypes":  [
+
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "com.ibm.icu.text.Collator"
+                       },
+                       {
+                           "type":  "com.sun.management.GarbageCollectorMXBean"
+                       },
+                       {
+                           "type":  "com.sun.management.GcInfo"
+                       },
+                       {
+                           "type":  "com.sun.management.HotSpotDiagnosticMXBean"
+                       },
+                       {
+                           "type":  "com.sun.management.internal.DiagnosticCommandArgumentInfo",
+                           "jniAccessible":  true,
+                           "methods":  [
+                                           {
+                                               "name":  "\u003cinit\u003e",
+                                               "parameterTypes":  [
+                                                                      "java.lang.String",
+                                                                      "java.lang.String",
+                                                                      "java.lang.String",
+                                                                      "java.lang.String",
+                                                                      "boolean",
+                                                                      "boolean",
+                                                                      "boolean",
+                                                                      "int"
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "com.sun.management.internal.DiagnosticCommandArgumentInfo[]"
+                       },
+                       {
+                           "type":  "com.sun.management.internal.DiagnosticCommandInfo",
+                           "jniAccessible":  true,
+                           "methods":  [
+                                           {
+                                               "name":  "\u003cinit\u003e",
+                                               "parameterTypes":  [
+                                                                      "java.lang.String",
+                                                                      "java.lang.String",
+                                                                      "java.lang.String",
+                                                                      "boolean",
+                                                                      "java.util.List"
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "com.sun.management.internal.DiagnosticCommandInfo[]"
+                       },
+                       {
+                           "type":  "com.sun.management.internal.GarbageCollectorExtImpl"
+                       },
+                       {
+                           "type":  "com.sun.management.internal.HotSpotDiagnostic"
+                       },
+                       {
+                           "type":  "com.sun.management.internal.HotSpotThreadImpl"
+                       },
+                       {
+                           "type":  "com.sun.management.internal.OperatingSystemImpl"
+                       },
+                       {
+                           "type":  "com.sun.management.internal.VirtualThreadSchedulerImpls$VirtualThreadSchedulerImpl"
+                       },
+                       {
+                           "type":  "com.sun.management.OperatingSystemMXBean"
+                       },
+                       {
+                           "type":  "com.sun.management.ThreadMXBean"
+                       },
+                       {
+                           "type":  "com.sun.management.VMOption"
+                       },
+                       {
+                           "type":  "com.sun.org.apache.xerces.internal.impl.dv.xs.ExtendedSchemaDVFactoryImpl",
+                           "methods":  [
+                                           {
+                                               "name":  "\u003cinit\u003e",
+                                               "parameterTypes":  [
+
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "com.sun.org.apache.xerces.internal.impl.dv.xs.SchemaDVFactoryImpl",
+                           "methods":  [
+                                           {
+                                               "name":  "\u003cinit\u003e",
+                                               "parameterTypes":  [
+
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "com.sun.org.apache.xerces.internal.jaxp.SAXParserFactoryImpl",
+                           "methods":  [
+                                           {
+                                               "name":  "\u003cinit\u003e",
+                                               "parameterTypes":  [
+
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "double[]"
+                       },
+                       {
+                           "type":  "float[]"
+                       },
+                       {
+                           "type":  "hr.hrg.maven.getdeps.Main",
+                           "jniAccessible":  true,
+                           "methods":  [
+                                           {
+                                               "name":  "main",
+                                               "parameterTypes":  [
+                                                                      "java.lang.String[]"
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "int[]"
+                       },
+                       {
+                           "type":  "io.github.jeremylong.jcs3.slf4j.Slf4jLogFactory"
+                       },
+                       {
+                           "type":  "java.beans.PropertyVetoException"
+                       },
+                       {
+                           "type":  "java.lang.Boolean",
+                           "jniAccessible":  true,
+                           "fields":  [
+                                          {
+                                              "name":  "TYPE"
+                                          }
+                                      ],
+                           "methods":  [
+                                           {
+                                               "name":  "getBoolean",
+                                               "parameterTypes":  [
+                                                                      "java.lang.String"
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "java.lang.Byte",
+                           "fields":  [
+                                          {
+                                              "name":  "TYPE"
+                                          }
+                                      ]
+                       },
+                       {
+                           "type":  "java.lang.Character",
+                           "fields":  [
+                                          {
+                                              "name":  "TYPE"
+                                          }
+                                      ]
+                       },
+                       {
+                           "type":  "java.lang.Class",
+                           "methods":  [
+                                           {
+                                               "name":  "isRecord",
+                                               "parameterTypes":  [
+
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "java.lang.Deprecated"
+                       },
+                       {
+                           "type":  "java.lang.Double",
+                           "fields":  [
+                                          {
+                                              "name":  "TYPE"
+                                          }
+                                      ]
+                       },
+                       {
+                           "type":  "java.lang.Float",
+                           "fields":  [
+                                          {
+                                              "name":  "TYPE"
+                                          }
+                                      ]
+                       },
+                       {
+                           "type":  "java.lang.Integer",
+                           "fields":  [
+                                          {
+                                              "name":  "TYPE"
+                                          }
+                                      ]
+                       },
+                       {
+                           "type":  "java.lang.Long",
+                           "fields":  [
+                                          {
+                                              "name":  "TYPE"
+                                          }
+                                      ]
+                       },
+                       {
+                           "type":  "java.lang.management.BufferPoolMXBean"
+                       },
+                       {
+                           "type":  "java.lang.management.ClassLoadingMXBean"
+                       },
+                       {
+                           "type":  "java.lang.management.CompilationMXBean"
+                       },
+                       {
+                           "type":  "java.lang.management.LockInfo"
+                       },
+                       {
+                           "type":  "java.lang.management.MemoryManagerMXBean"
+                       },
+                       {
+                           "type":  "java.lang.management.MemoryMXBean"
+                       },
+                       {
+                           "type":  "java.lang.management.MemoryPoolMXBean"
+                       },
+                       {
+                           "type":  "java.lang.management.MemoryUsage"
+                       },
+                       {
+                           "type":  "java.lang.management.MonitorInfo"
+                       },
+                       {
+                           "type":  "java.lang.management.PlatformLoggingMXBean"
+                       },
+                       {
+                           "type":  "java.lang.management.RuntimeMXBean"
+                       },
+                       {
+                           "type":  "java.lang.management.ThreadInfo"
+                       },
+                       {
+                           "type":  "java.lang.Object"
+                       },
+                       {
+                           "type":  "java.lang.ObjectBeanInfo"
+                       },
+                       {
+                           "type":  "java.lang.ObjectCustomizer"
+                       },
+                       {
+                           "type":  "java.lang.Short",
+                           "fields":  [
+                                          {
+                                              "name":  "TYPE"
+                                          }
+                                      ]
+                       },
+                       {
+                           "type":  "java.lang.StackTraceElement"
+                       },
+                       {
+                           "type":  "java.lang.String"
+                       },
+                       {
+                           "type":  "java.lang.String[]"
+                       },
+                       {
+                           "type":  "java.lang.Void",
+                           "fields":  [
+                                          {
+                                              "name":  "TYPE"
+                                          }
+                                      ]
+                       },
+                       {
+                           "type":  "java.math.BigDecimal"
+                       },
+                       {
+                           "type":  "java.math.BigInteger"
+                       },
+                       {
+                           "type":  "java.sql.SQLException"
+                       },
+                       {
+                           "type":  "java.util.Arrays",
+                           "jniAccessible":  true,
+                           "methods":  [
+                                           {
+                                               "name":  "asList",
+                                               "parameterTypes":  [
+                                                                      "java.lang.Object[]"
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "java.util.Date"
+                       },
+                       {
+                           "type":  "javax.management.MBeanOperationInfo"
+                       },
+                       {
+                           "type":  "javax.management.MBeanServerBuilder",
+                           "methods":  [
+                                           {
+                                               "name":  "\u003cinit\u003e",
+                                               "parameterTypes":  [
+
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "javax.management.MXBean"
+                       },
+                       {
+                           "type":  "javax.management.ObjectName"
+                       },
+                       {
+                           "type":  "javax.management.openmbean.CompositeData"
+                       },
+                       {
+                           "type":  "javax.management.openmbean.CompositeData[]"
+                       },
+                       {
+                           "type":  "javax.management.openmbean.OpenMBeanOperationInfoSupport"
+                       },
+                       {
+                           "type":  "javax.management.openmbean.TabularData"
+                       },
+                       {
+                           "type":  "javax.management.StandardEmitterMBean"
+                       },
+                       {
+                           "type":  "jdk.management.jfr.ConfigurationInfo"
+                       },
+                       {
+                           "type":  "jdk.management.jfr.EventTypeInfo"
+                       },
+                       {
+                           "type":  "jdk.management.jfr.FlightRecorderMXBean"
+                       },
+                       {
+                           "type":  "jdk.management.jfr.FlightRecorderMXBeanImpl"
+                       },
+                       {
+                           "type":  "jdk.management.jfr.RecordingInfo"
+                       },
+                       {
+                           "type":  "jdk.management.jfr.SettingDescriptorInfo"
+                       },
+                       {
+                           "type":  "jdk.management.VirtualThreadSchedulerMXBean"
+                       },
+                       {
+                           "type":  "long[]"
+                       },
+                       {
+                           "type":  "org.apache.commons.jcs3.admin.CacheElementInfo"
+                       },
+                       {
+                           "type":  "org.apache.commons.jcs3.admin.CacheRegionInfo"
+                       },
+                       {
+                           "type":  "org.apache.commons.jcs3.admin.JCSAdminBean"
+                       },
+                       {
+                           "type":  "org.apache.commons.jcs3.admin.JCSJMXBean"
+                       },
+                       {
+                           "type":  "org.apache.commons.jcs3.auxiliary.AbstractAuxiliaryCacheAttributes",
+                           "methods":  [
+                                           {
+                                               "name":  "setEventQueuePoolName",
+                                               "parameterTypes":  [
+                                                                      "java.lang.String"
+                                                                  ]
+                                           },
+                                           {
+                                               "name":  "setEventQueueType",
+                                               "parameterTypes":  [
+                                                                      "org.apache.commons.jcs3.engine.behavior.ICacheEventQueue$QueueType"
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "org.apache.commons.jcs3.auxiliary.AbstractAuxiliaryCacheAttributesBeanInfo"
+                       },
+                       {
+                           "type":  "org.apache.commons.jcs3.auxiliary.AbstractAuxiliaryCacheAttributesCustomizer"
+                       },
+                       {
+                           "type":  "org.apache.commons.jcs3.auxiliary.AuxiliaryCacheAttributes"
+                       },
+                       {
+                           "type":  "org.apache.commons.jcs3.auxiliary.disk.AbstractDiskCacheAttributes",
+                           "methods":  [
+                                           {
+                                               "name":  "setDiskPath",
+                                               "parameterTypes":  [
+                                                                      "java.io.File"
+                                                                  ]
+                                           },
+                                           {
+                                               "name":  "setMaxPurgatorySize",
+                                               "parameterTypes":  [
+                                                                      "int"
+                                                                  ]
+                                           },
+                                           {
+                                               "name":  "setShutdownSpoolTimeLimit",
+                                               "parameterTypes":  [
+                                                                      "int"
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "org.apache.commons.jcs3.auxiliary.disk.AbstractDiskCacheAttributesBeanInfo"
+                       },
+                       {
+                           "type":  "org.apache.commons.jcs3.auxiliary.disk.AbstractDiskCacheAttributesCustomizer"
+                       },
+                       {
+                           "type":  "org.apache.commons.jcs3.auxiliary.disk.behavior.IDiskCacheAttributes"
+                       },
+                       {
+                           "type":  "org.apache.commons.jcs3.auxiliary.disk.indexed.IndexedDiskCacheAttributes",
+                           "methods":  [
+                                           {
+                                               "name":  "\u003cinit\u003e",
+                                               "parameterTypes":  [
+
+                                                                  ]
+                                           },
+                                           {
+                                               "name":  "setMaxKeySize",
+                                               "parameterTypes":  [
+                                                                      "int"
+                                                                  ]
+                                           },
+                                           {
+                                               "name":  "setOptimizeAtRemoveCount",
+                                               "parameterTypes":  [
+                                                                      "int"
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "org.apache.commons.jcs3.auxiliary.disk.indexed.IndexedDiskCacheAttributesBeanInfo"
+                       },
+                       {
+                           "type":  "org.apache.commons.jcs3.auxiliary.disk.indexed.IndexedDiskCacheAttributesCustomizer"
+                       },
+                       {
+                           "type":  "org.apache.commons.jcs3.auxiliary.disk.indexed.IndexedDiskCacheFactory",
+                           "methods":  [
+                                           {
+                                               "name":  "\u003cinit\u003e",
+                                               "parameterTypes":  [
+
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "org.apache.commons.jcs3.engine.behavior.ICompositeCacheAttributes"
+                       },
+                       {
+                           "type":  "org.apache.commons.jcs3.engine.behavior.IElementAttributes"
+                       },
+                       {
+                           "type":  "org.apache.commons.jcs3.engine.CompositeCacheAttributes",
+                           "methods":  [
+                                           {
+                                               "name":  "\u003cinit\u003e",
+                                               "parameterTypes":  [
+
+                                                                  ]
+                                           },
+                                           {
+                                               "name":  "setDiskUsagePattern",
+                                               "parameterTypes":  [
+                                                                      "org.apache.commons.jcs3.engine.behavior.ICompositeCacheAttributes$DiskUsagePattern"
+                                                                  ]
+                                           },
+                                           {
+                                               "name":  "setMaxMemoryIdleTimeSeconds",
+                                               "parameterTypes":  [
+                                                                      "long"
+                                                                  ]
+                                           },
+                                           {
+                                               "name":  "setMaxObjects",
+                                               "parameterTypes":  [
+                                                                      "int"
+                                                                  ]
+                                           },
+                                           {
+                                               "name":  "setMemoryCacheName",
+                                               "parameterTypes":  [
+                                                                      "java.lang.String"
+                                                                  ]
+                                           },
+                                           {
+                                               "name":  "setShrinkerIntervalSeconds",
+                                               "parameterTypes":  [
+                                                                      "long"
+                                                                  ]
+                                           },
+                                           {
+                                               "name":  "setUseMemoryShrinker",
+                                               "parameterTypes":  [
+                                                                      "boolean"
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "org.apache.commons.jcs3.engine.CompositeCacheAttributesBeanInfo"
+                       },
+                       {
+                           "type":  "org.apache.commons.jcs3.engine.CompositeCacheAttributesCustomizer"
+                       },
+                       {
+                           "type":  "org.apache.commons.jcs3.engine.ElementAttributes",
+                           "methods":  [
+                                           {
+                                               "name":  "\u003cinit\u003e",
+                                               "parameterTypes":  [
+
+                                                                  ]
+                                           },
+                                           {
+                                               "name":  "setIdleTime",
+                                               "parameterTypes":  [
+                                                                      "long"
+                                                                  ]
+                                           },
+                                           {
+                                               "name":  "setIsEternal",
+                                               "parameterTypes":  [
+                                                                      "boolean"
+                                                                  ]
+                                           },
+                                           {
+                                               "name":  "setIsLateral",
+                                               "parameterTypes":  [
+                                                                      "boolean"
+                                                                  ]
+                                           },
+                                           {
+                                               "name":  "setIsRemote",
+                                               "parameterTypes":  [
+                                                                      "boolean"
+                                                                  ]
+                                           },
+                                           {
+                                               "name":  "setIsSpool",
+                                               "parameterTypes":  [
+                                                                      "boolean"
+                                                                  ]
+                                           },
+                                           {
+                                               "name":  "setMaxLife",
+                                               "parameterTypes":  [
+                                                                      "long"
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "org.apache.commons.jcs3.engine.ElementAttributesBeanInfo"
+                       },
+                       {
+                           "type":  "org.apache.commons.jcs3.engine.ElementAttributesCustomizer"
+                       },
+                       {
+                           "type":  "org.apache.commons.jcs3.engine.memory.lru.LRUMemoryCache",
+                           "methods":  [
+                                           {
+                                               "name":  "\u003cinit\u003e",
+                                               "parameterTypes":  [
+
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "org.apache.commons.pool2.impl.DefaultEvictionPolicy",
+                           "methods":  [
+                                           {
+                                               "name":  "\u003cinit\u003e",
+                                               "parameterTypes":  [
+
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "org.apache.lucene.store.MemorySegmentIndexInputProvider"
+                       },
+                       {
+                           "type":  "org.apache.maven.model.Build",
+                           "allDeclaredMethods":  true
+                       },
+                       {
+                           "type":  "org.apache.maven.model.BuildBase",
+                           "allDeclaredMethods":  true
+                       },
+                       {
+                           "type":  "org.apache.maven.model.Model",
+                           "allDeclaredMethods":  true
+                       },
+                       {
+                           "type":  "org.apache.maven.model.ModelBase",
+                           "allDeclaredMethods":  true
+                       },
+                       {
+                           "type":  "org.apache.maven.model.Organization",
+                           "allDeclaredMethods":  true
+                       },
+                       {
+                           "type":  "org.apache.maven.model.Reporting",
+                           "allDeclaredMethods":  true
+                       },
+                       {
+                           "type":  "org.apache.maven.model.Scm",
+                           "allDeclaredMethods":  true
+                       },
+                       {
+                           "type":  "org.h2.Driver",
+                           "methods":  [
+                                           {
+                                               "name":  "\u003cinit\u003e",
+                                               "parameterTypes":  [
+
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "org.h2.mvstore.db.LobStorageMap$BlobMeta$Type",
+                           "fields":  [
+                                          {
+                                              "name":  "INSTANCE"
+                                          }
+                                      ]
+                       },
+                       {
+                           "type":  "org.h2.mvstore.db.LobStorageMap$BlobReference$Type",
+                           "fields":  [
+                                          {
+                                              "name":  "INSTANCE"
+                                          }
+                                      ]
+                       },
+                       {
+                           "type":  "org.h2.mvstore.db.NullValueDataType",
+                           "fields":  [
+                                          {
+                                              "name":  "INSTANCE"
+                                          }
+                                      ]
+                       },
+                       {
+                           "type":  "org.h2.mvstore.db.RowDataType$Factory",
+                           "methods":  [
+                                           {
+                                               "name":  "\u003cinit\u003e",
+                                               "parameterTypes":  [
+
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "org.h2.mvstore.MVStore$TxCounter"
+                       },
+                       {
+                           "type":  "org.h2.mvstore.Page"
+                       },
+                       {
+                           "type":  "org.h2.mvstore.tx.VersionedValueType$Factory",
+                           "methods":  [
+                                           {
+                                               "name":  "\u003cinit\u003e",
+                                               "parameterTypes":  [
+
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "org.h2.mvstore.type.ByteArrayDataType",
+                           "fields":  [
+                                          {
+                                              "name":  "INSTANCE"
+                                          }
+                                      ]
+                       },
+                       {
+                           "type":  "org.h2.mvstore.type.LongDataType",
+                           "fields":  [
+                                          {
+                                              "name":  "INSTANCE"
+                                          }
+                                      ]
+                       },
+                       {
+                           "type":  "org.h2.store.fs.async.FilePathAsync",
+                           "methods":  [
+                                           {
+                                               "name":  "\u003cinit\u003e",
+                                               "parameterTypes":  [
+
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "org.h2.store.fs.mem.FilePathMem",
+                           "methods":  [
+                                           {
+                                               "name":  "\u003cinit\u003e",
+                                               "parameterTypes":  [
+
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "org.h2.store.fs.mem.FilePathMemLZF",
+                           "methods":  [
+                                           {
+                                               "name":  "\u003cinit\u003e",
+                                               "parameterTypes":  [
+
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "org.h2.store.fs.niomapped.FilePathNioMapped",
+                           "methods":  [
+                                           {
+                                               "name":  "\u003cinit\u003e",
+                                               "parameterTypes":  [
+
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "org.h2.store.fs.niomem.FilePathNioMem",
+                           "methods":  [
+                                           {
+                                               "name":  "\u003cinit\u003e",
+                                               "parameterTypes":  [
+
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "org.h2.store.fs.niomem.FilePathNioMemLZF",
+                           "methods":  [
+                                           {
+                                               "name":  "\u003cinit\u003e",
+                                               "parameterTypes":  [
+
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "org.h2.store.fs.retry.FilePathRetryOnInterrupt",
+                           "methods":  [
+                                           {
+                                               "name":  "\u003cinit\u003e",
+                                               "parameterTypes":  [
+
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "org.h2.store.fs.split.FilePathSplit",
+                           "methods":  [
+                                           {
+                                               "name":  "\u003cinit\u003e",
+                                               "parameterTypes":  [
+
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "org.h2.store.fs.zip.FilePathZip",
+                           "methods":  [
+                                           {
+                                               "name":  "\u003cinit\u003e",
+                                               "parameterTypes":  [
+
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.ArchiveAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.ArtifactoryAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.AssemblyAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.AutoconfAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.CarthageAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.CentralAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.CMakeAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.CocoaPodsAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.ComposerLockAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.CPEAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.DartAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.DependencyBundlingAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.DependencyMergingAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.ElixirMixAuditAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.FalsePositiveAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.FileNameAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.GolangDepAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.GolangModAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.HintAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.JarAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.KnownExploitedVulnerabilityAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.LibmanAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.MSBuildProjectAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.NexusAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.NodeAuditAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.NodePackageAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.NpmCPEAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.NugetconfAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.NuspecAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.NvdCveAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.OpenSSLAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.OssIndexAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.PEAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.PerlCpanfileAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.PinnedMavenInstallAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.PinnedMavenInstallAnalyzer$Artifactv2"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.PinnedMavenInstallAnalyzer$DependencyTree"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.PinnedMavenInstallAnalyzer$InstallFile"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.PinnedMavenInstallAnalyzer$InstallFileV2"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.PinnedMavenInstallAnalyzer$MavenDependency"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.PipAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.PipfileAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.PipfilelockAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.PnpmAuditAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.PoetryAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.PythonDistributionAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.PythonPackageAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.RetireJsAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.RubyBundleAuditAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.RubyBundlerAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.RubyGemspecAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.SwiftPackageManagerAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.SwiftPackageResolvedAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.UnusedSuppressionRuleAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.VersionFilterAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.VulnerabilitySuppressionAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.analyzer.YarnAuditAnalyzer"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.data.nvdcve.DriverShim"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.data.nvdcve.H2Functions"
+                       },
+                       {
+                           "type":  "org.owasp.dependencycheck.utils.WriteLockCleanupHook",
+                           "methods":  [
+                                           {
+                                               "name":  "\u003cinit\u003e",
+                                               "parameterTypes":  [
+
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "short[]"
+                       },
+                       {
+                           "type":  "sun.launcher.LauncherHelper",
+                           "jniAccessible":  true,
+                           "fields":  [
+                                          {
+                                              "name":  "isStaticMain"
+                                          },
+                                          {
+                                              "name":  "noArgMain"
+                                          }
+                                      ],
+                           "methods":  [
+                                           {
+                                               "name":  "getApplicationClass",
+                                               "parameterTypes":  [
+
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "sun.management.ClassLoadingImpl"
+                       },
+                       {
+                           "type":  "sun.management.CompilationImpl"
+                       },
+                       {
+                           "type":  "sun.management.ManagementFactoryHelper$1"
+                       },
+                       {
+                           "type":  "sun.management.ManagementFactoryHelper$PlatformLoggingImpl"
+                       },
+                       {
+                           "type":  "sun.management.MemoryImpl"
+                       },
+                       {
+                           "type":  "sun.management.MemoryManagerImpl"
+                       },
+                       {
+                           "type":  "sun.management.MemoryPoolImpl"
+                       },
+                       {
+                           "type":  "sun.management.RuntimeImpl"
+                       },
+                       {
+                           "type":  "sun.management.VMManagementImpl",
+                           "jniAccessible":  true,
+                           "fields":  [
+                                          {
+                                              "name":  "compTimeMonitoringSupport"
+                                          },
+                                          {
+                                              "name":  "currentThreadCpuTimeSupport"
+                                          },
+                                          {
+                                              "name":  "objectMonitorUsageSupport"
+                                          },
+                                          {
+                                              "name":  "otherThreadCpuTimeSupport"
+                                          },
+                                          {
+                                              "name":  "remoteDiagnosticCommandsSupport"
+                                          },
+                                          {
+                                              "name":  "synchronizerUsageSupport"
+                                          },
+                                          {
+                                              "name":  "threadAllocatedMemorySupport"
+                                          },
+                                          {
+                                              "name":  "threadContentionMonitoringSupport"
+                                          }
+                                      ]
+                       },
+                       {
+                           "type":  "sun.security.provider.DRBG",
+                           "methods":  [
+                                           {
+                                               "name":  "\u003cinit\u003e",
+                                               "parameterTypes":  [
+                                                                      "java.security.SecureRandomParameters"
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "sun.security.provider.SHA",
+                           "methods":  [
+                                           {
+                                               "name":  "\u003cinit\u003e",
+                                               "parameterTypes":  [
+
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "sun.security.provider.SHA2$SHA256",
+                           "methods":  [
+                                           {
+                                               "name":  "\u003cinit\u003e",
+                                               "parameterTypes":  [
+
+                                                                  ]
+                                           }
+                                       ]
+                       },
+                       {
+                           "type":  "sun.text.resources.cldr.FormatData"
+                       },
+                       {
+                           "type":  "sun.text.resources.cldr.FormatData_en"
+                       },
+                       {
+                           "type":  "sun.text.resources.cldr.FormatData_en_US"
+                       },
+                       {
+                           "type":  "sun.util.resources.cldr.CalendarData"
+                       },
+                       {
+                           "allDeclaredMethods":  true,
+                           "type":  "org.codehaus.plexus.interpolation.reflection.ReflectionValueExtractor"
+                       }
+                   ],
+    "resources":  [
+                      {
+                          "glob":  "app.properties"
+                      },
+                      {
+                          "module":  "java.xml",
+                          "glob":  "com/sun/org/apache/xerces/internal/impl/xpath/regex/message.properties"
+                      },
+                      {
+                          "module":  "java.xml",
+                          "glob":  "com/sun/org/apache/xerces/internal/impl/xpath/regex/message_en.properties"
+                      },
+                      {
+                          "module":  "java.xml",
+                          "glob":  "com/sun/org/apache/xerces/internal/impl/xpath/regex/message_en_GB.properties"
+                      },
+                      {
+                          "glob":  "data/dbStatements.properties"
+                      },
+                      {
+                          "glob":  "data/dbStatements_h2.properties"
+                      },
+                      {
+                          "glob":  "dependencycheck.properties"
+                      },
+                      {
+                          "glob":  "dependencycheck-base-hint.xml"
+                      },
+                      {
+                          "glob":  "dependencycheck-base-suppression.xml"
+                      },
+                      {
+                          "glob":  "dependencycheck-cache.properties"
+                      },
+                      {
+                          "module":  "jdk.jfr",
+                          "glob":  "jdk/jfr/internal/query/view.ini"
+                      },
+                      {
+                          "glob":  "META-INF/services/java.net.spi.InetAddressResolverProvider"
+                      },
+                      {
+                          "glob":  "META-INF/services/java.net.spi.URLStreamHandlerProvider"
+                      },
+                      {
+                          "glob":  "META-INF/services/java.sql.Driver"
+                      },
+                      {
+                          "glob":  "META-INF/services/java.time.zone.ZoneRulesProvider"
+                      },
+                      {
+                          "glob":  "META-INF/services/java.util.spi.ResourceBundleControlProvider"
+                      },
+                      {
+                          "glob":  "META-INF/services/javax.xml.parsers.SAXParserFactory"
+                      },
+                      {
+                          "glob":  "META-INF/services/org.apache.commons.jcs3.log.LogFactory"
+                      },
+                      {
+                          "glob":  "META-INF/services/org.owasp.dependencycheck.analyzer.Analyzer"
+                      },
+                      {
+                          "glob":  "org/apache/commons/dbcp2/LocalStrings.properties"
+                      },
+                      {
+                          "glob":  "org/apache/commons/dbcp2/LocalStrings_en.properties"
+                      },
+                      {
+                          "glob":  "org/apache/commons/dbcp2/LocalStrings_en_GB.properties"
+                      },
+                      {
+                          "glob":  "org/apache/maven/model/pom-4.0.0.xml"
+                      },
+                      {
+                          "glob":  "org/h2/util/data.zip"
+                      },
+                      {
+                          "glob":  "org/slf4j/impl/StaticLoggerBinder.class"
+                      },
+                      {
+                          "glob":  "schema/dependency-hint.1.1.xsd"
+                      },
+                      {
+                          "glob":  "schema/dependency-hint.1.2.xsd"
+                      },
+                      {
+                          "glob":  "schema/dependency-hint.1.3.xsd"
+                      },
+                      {
+                          "glob":  "schema/dependency-hint.1.4.xsd"
+                      },
+                      {
+                          "glob":  "schema/dependency-suppression.1.1.xsd"
+                      },
+                      {
+                          "glob":  "schema/dependency-suppression.1.2.xsd"
+                      },
+                      {
+                          "glob":  "schema/dependency-suppression.1.3.xsd"
+                      },
+                      {
+                          "glob":  "schema/dependency-suppression.1.4.xsd"
+                      },
+                      {
+                          "glob":  "schema/suppression.xsd"
+                      },
+                      {
+                          "glob":  "simplelogger.properties"
+                      },
+                      {
+                          "bundle":  "com.sun.org.apache.xerces.internal.impl.xpath.regex.message"
+                      },
+                      {
+                          "bundle":  "data/dbStatements"
+                      },
+                      {
+                          "bundle":  "org.apache.commons.dbcp2.LocalStrings"
+                      }
+                  ]
 }

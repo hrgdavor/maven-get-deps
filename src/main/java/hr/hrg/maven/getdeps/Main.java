@@ -42,6 +42,11 @@ public class Main {
     }
 
     public static void main(String[] args) {
+        // Fix for Lucene on Java 21+ (and GraalVM 25)
+        if (System.getProperty("org.apache.lucene.store.MMapDirectory.enableMemorySegments") == null) {
+            System.setProperty("org.apache.lucene.store.MMapDirectory.enableMemorySegments", "false");
+        }
+
         Options options = new Options();
         options.addOption("v", "version", false, "Show version");
 
@@ -84,6 +89,10 @@ public class Main {
                 "Download / update the OWASP CVE database into the --cve-data directory and exit"));
         options.addOption(new Option("nk", "nvd-api-key", true,
                 "NVD API key for higher rate limits during --cve-update (see https://nvd.nist.gov/developers/request-an-api-key)"));
+        options.addOption(new Option("cv", "cve-check-versions", false,
+                "For vulnerable dependencies, search for the nearest clean version (requires network to fetch version list)"));
+        options.addOption(new Option("ct", "cve-severity-threshold", true,
+                "CVSS severity threshold (0.0 to 10.0). If any CVE meets/exceeds this, the tool exits with code 1 (default: 8.0)"));
 
         CommandLineParser parser = new DefaultParser();
         HelpFormatter formatter = new HelpFormatter();
@@ -138,9 +147,17 @@ public class Main {
                     deps = service.resolvePerDep(pomFile, scopesStr, cachePath);
                 }
 
-                String report = CveReportService.scan(cveDataDir, deps).formatMarkdownReport();
+                boolean checkVersions = cmd.hasOption("cve-check-versions");
+                CveReportService.CveReportResult cveResult = CveReportService.scan(cveDataDir, deps, checkVersions);
+                String report = cveResult.formatMarkdownReport();
                 java.nio.file.Files.writeString(java.nio.file.Path.of(cveReportPath), report);
                 System.out.println("CVE report written to: " + cveReportPath);
+
+                float threshold = Float.parseFloat(cmd.getOptionValue("cve-severity-threshold", "8.0"));
+                if (cveResult.hasAnyVulnerabilitiesAbove(threshold)) {
+                    System.err.println("[CVE] High-severity vulnerabilities found! Breaking build.");
+                    System.exit(1);
+                }
 
                 // If we ONLY wanted a CVE report, exit now.
                 // We check if other output options are missing.

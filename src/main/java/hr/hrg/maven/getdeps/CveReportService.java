@@ -18,6 +18,16 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
+
+import org.eclipse.aether.RepositorySystem;
+import org.eclipse.aether.RepositorySystemSession;
+import org.eclipse.aether.artifact.Artifact;
+import org.eclipse.aether.artifact.DefaultArtifact;
+import org.eclipse.aether.repository.RemoteRepository;
+import org.eclipse.aether.resolution.VersionRangeRequest;
+import org.eclipse.aether.resolution.VersionRangeResult;
+import org.eclipse.aether.version.Version;
 
 /**
  * Service that queries a pre-populated OWASP Dependency-Check H2 database
@@ -42,11 +52,16 @@ public class CveReportService {
         public final String coordinate; // G:A:V
         public final List<CveInfo> vulnerabilities;
         public final boolean hasVulnerabilities;
+        public String nearestCleanVersion;
 
         public ArtifactCveResult(String coordinate, List<CveInfo> vulnerabilities) {
             this.coordinate = coordinate;
             this.vulnerabilities = vulnerabilities;
             this.hasVulnerabilities = !vulnerabilities.isEmpty();
+        }
+
+        public boolean hasVulnerabilitiesAbove(float threshold) {
+            return vulnerabilities.stream().anyMatch(v -> v.cvssScore >= threshold);
         }
     }
 
@@ -54,18 +69,24 @@ public class CveReportService {
     public static class CveInfo {
         public final String id;
         public final String url;
+        public final float cvssScore;
 
-        public CveInfo(String id, String url) {
+        public CveInfo(String id, String url, float cvssScore) {
             this.id = id;
             this.url = url;
+            this.cvssScore = cvssScore;
         }
 
         @Override
         public String toString() {
-            if (url != null && !url.isBlank()) {
-                return "[" + id + "](" + url + ")";
+            String label = id;
+            if (cvssScore > 0) {
+                label += " (CVSS: " + cvssScore + ")";
             }
-            return id;
+            if (url != null && !url.isBlank()) {
+                return "[" + label + "](" + url + ")";
+            }
+            return label;
         }
     }
 
@@ -101,6 +122,12 @@ public class CveReportService {
             this.directReports = directReports;
         }
 
+        public boolean hasAnyVulnerabilitiesAbove(float threshold) {
+            return directReports.stream()
+                    .flatMap(dr -> dr.allResults.stream())
+                    .anyMatch(r -> r.hasVulnerabilitiesAbove(threshold));
+        }
+
         /**
          * Renders a two-section markdown report:
          * 1. Summary table — one row per direct dependency
@@ -126,9 +153,8 @@ public class CveReportService {
             sb.append("\n## CVE Report — Details\n");
             for (DirectDepReport rep : directReports) {
                 if (rep.anyVulnerable()) {
-                    sb.append("\n### ").append(rep.directCoordinate).append("\n\n");
-                    sb.append("| Artifact | Version | CVEs |\n");
-                    sb.append("|---|---|---|\n");
+                    sb.append("| Artifact | Version | CVEs | Nearest Clean Version |\n");
+                    sb.append("|---|---|---|---|\n");
                     for (ArtifactCveResult r : rep.allResults) {
                         if (r.hasVulnerabilities) {
                             List<String> links = new ArrayList<>();
@@ -140,7 +166,8 @@ public class CveReportService {
                             String[] parts = r.coordinate.split(":");
                             String artifact = parts.length >= 2 ? parts[0] + ":" + parts[1] : r.coordinate;
                             String version = parts.length >= 3 ? parts[2] : "?";
-                            sb.append(String.format("| `%s` | %s | %s |\n", artifact, version, cveStr));
+                            String cleanVer = r.nearestCleanVersion != null ? "`" + r.nearestCleanVersion + "`" : "—";
+                            sb.append(String.format("| `%s` | %s | %s | %s |\n", artifact, version, cveStr, cleanVer));
                         }
                     }
                 }
@@ -163,6 +190,13 @@ public class CveReportService {
     public static CveReportResult scan(
             String dataDirectory,
             Map<String, List<String>> directDepsWithTransitives) throws Exception {
+        return scan(dataDirectory, directDepsWithTransitives, false);
+    }
+
+    public static CveReportResult scan(
+            String dataDirectory,
+            Map<String, List<String>> directDepsWithTransitives,
+            boolean checkCleanVersions) throws Exception {
 
         Settings settings = new Settings();
         settings.setString(Settings.KEYS.DATA_DIRECTORY, dataDirectory);
@@ -244,12 +278,22 @@ public class CveReportService {
                         .map(v -> {
                             String name = v.getName();
                             String url = name.startsWith("CVE-") ? "https://nvd.nist.gov/vuln/detail/" + name : null;
-                            return new CveInfo(name, url);
+                            float score = 0;
+                            if (v.getCvssV3() != null && v.getCvssV3().getCvssData() != null) {
+                                score = v.getCvssV3().getCvssData().getBaseScore().floatValue();
+                            } else if (v.getCvssV2() != null && v.getCvssV2().getCvssData() != null) {
+                                score = v.getCvssV2().getCvssData().getBaseScore().floatValue();
+                            }
+                            return new CveInfo(name, url, score);
                         })
                         .sorted((a, b) -> a.id.compareTo(b.id))
                         .toList();
 
                 cveResultsByCoord.put(coord, new ArtifactCveResult(coord, vulns));
+            }
+
+            if (checkCleanVersions) {
+                findNearestCleanVersions(engine, cveResultsByCoord, dataDirectory);
             }
         }
 
@@ -269,9 +313,85 @@ public class CveReportService {
     }
 
     /**
-     * Tries to match a {@link Dependency} back to its original coordinate string
-     * by comparing artifact name and version.
+     * For each vulnerable artifact, fetches available versions and finds the
+     * nearest one that is CLEAN.
      */
+    private static void findNearestCleanVersions(Engine engine, Map<String, ArtifactCveResult> results,
+            String dataDirectory) {
+        RepositorySystem system = Bootstrapper.newRepositorySystem();
+        RepositorySystemSession session = Bootstrapper.newRepositorySystemSession(system,
+                System.getProperty("user.home") + "/.m2/repository");
+        List<RemoteRepository> repos = Bootstrapper.newRepositories(system, session);
+
+        List<ArtifactCveResult> vulnerableOnes = results.values().stream()
+                .filter(r -> r.hasVulnerabilities)
+                .collect(Collectors.toList());
+
+        if (vulnerableOnes.isEmpty())
+            return;
+
+        System.out.println("[CVE] Searching for clean versions for " + vulnerableOnes.size() + " artifacts...");
+
+        for (ArtifactCveResult res : vulnerableOnes) {
+            String[] parts = res.coordinate.split(":");
+            if (parts.length < 3)
+                continue;
+            String g = parts[0];
+            String a = parts[1];
+            String currentV = parts[2];
+
+            try {
+                Artifact artifact = new DefaultArtifact(g, a, "jar", "[0,)");
+                VersionRangeRequest rangeRequest = new VersionRangeRequest();
+                rangeRequest.setArtifact(artifact);
+                rangeRequest.setRepositories(repos);
+
+                VersionRangeResult rangeResult = system.resolveVersionRange(session, rangeRequest);
+                List<Version> versions = rangeResult.getVersions();
+
+                // Sort versions: we want the nearest ones higher than current, then lower
+                List<String> candidates = versions.stream()
+                        .map(Version::toString)
+                        .filter(v -> !v.equals(currentV))
+                        .sorted((v1, v2) -> {
+                            // Simple heuristic: higher versions first
+                            return v2.compareTo(v1);
+                        })
+                        .limit(10) // Check up to 10 nearest versions
+                        .collect(Collectors.toList());
+
+                // Bulk scan these candidates
+                for (String candV : candidates) {
+                    Dependency candDep = new Dependency(new File(a + "-" + candV + ".jar"), true);
+                    candDep.setName(a);
+                    candDep.setVersion(candV);
+                    candDep.addSoftwareIdentifier(new GenericIdentifier(
+                            "pkg:maven/" + g + "/" + a + "@" + candV,
+                            org.owasp.dependencycheck.dependency.Confidence.HIGHEST));
+
+                    // Use a temporary mini-engine or just manually trigger analyzer on one dep?
+                    // Engine.analyze(Dependency) is not public. We must use a full pass or a
+                    // internal call.
+                    // For simplicity and correctness, we'll use the existing engine to add one and
+                    // analyze.
+                    engine.addDependency(candDep);
+                    try {
+                        engine.analyzeDependencies();
+                    } catch (ExceptionCollection e) {
+                    }
+
+                    boolean clean = candDep.getVulnerabilities().isEmpty();
+                    if (clean) {
+                        res.nearestCleanVersion = candV;
+                        break; // Found one!
+                    }
+                }
+            } catch (Exception e) {
+                System.err.println("[CVE] Failed to resolve versions for " + res.coordinate + ": " + e.getMessage());
+            }
+        }
+    }
+
     private static String coordFromDep(Dependency dep, List<String> allCoords) {
         for (String coord : allCoords) {
             String[] parts = coord.split(":");
