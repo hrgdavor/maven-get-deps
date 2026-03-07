@@ -13,6 +13,7 @@ pub fn main() !void {
     var classpath_mode: bool = false;
     var cache_dir: ?[]const u8 = null;
     var download_mode: bool = false;
+    var extra_classpath_file: ?[]const u8 = null;
 
     var i: usize = 1;
     while (i < args.len) : (i += 1) {
@@ -42,6 +43,14 @@ pub fn main() !void {
             }
         } else if (std.mem.eql(u8, arg, "--classpath") or std.mem.eql(u8, arg, "-cp")) {
             classpath_mode = true;
+        } else if (std.mem.eql(u8, arg, "--extra-classpath") or std.mem.eql(u8, arg, "-ecp")) {
+            i += 1;
+            if (i < args.len) {
+                extra_classpath_file = args[i];
+            } else {
+                std.debug.print("Missing value for {s}\n", .{arg});
+                std.process.exit(1);
+            }
         } else if (std.mem.eql(u8, arg, "--download")) {
             download_mode = true;
         } else if (std.mem.eql(u8, arg, "--cache") or std.mem.eql(u8, arg, "-c")) {
@@ -133,13 +142,32 @@ pub fn main() !void {
         }
 
         if (classpath_mode) {
+            if (extra_classpath_file) |ecp_file| {
+                const ecp_f = try std.fs.cwd().openFile(ecp_file, .{ .mode = .read_only });
+                defer ecp_f.close();
+                const ecp_content = try ecp_f.readToEndAlloc(allocator, 1 * 1024 * 1024);
+                defer allocator.free(ecp_content);
+
+                var ecp_iter = std.mem.splitScalar(u8, ecp_content, '\n');
+                while (ecp_iter.next()) |ecp_line| {
+                    const trimmed = std.mem.trim(u8, ecp_line, " \t\r\n");
+                    if (trimmed.len > 0) {
+                        if (!is_first) {
+                            const delim = [_]u8{std.fs.path.delimiter};
+                            try stdout.writeAll(&delim);
+                        }
+                        is_first = false;
+                        try stdout.writeAll(trimmed);
+                    }
+                }
+            }
             try stdout.writeAll("\n");
         }
 
         return;
     }
 
-    std.debug.print("Usage: maven_get_deps --input <file> [--convert-format <colon|path>] [--download] [--classpath] [--cache <dir>]\n", .{});
+    std.debug.print("Usage: maven_get_deps --input <file> [--convert-format <colon|path>] [--download] [--classpath] [--extra-classpath <file>] [--cache <dir>]\n", .{});
 }
 
 fn downloadFile(client: *std.http.Client, url: []const u8, dest_path: []const u8) !void {

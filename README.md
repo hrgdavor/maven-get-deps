@@ -1,293 +1,139 @@
 # maven-get-deps
 
-TODO: look into integration with https://github.com/mthmulders/mcs as a PR, or check if it can produce same things.
+A standalone tool to resolve and download Maven dependencies to a local folder, and generate classpath files for scripting. Uses the standard Maven repository structure, making it compatible with your existing `~/.m2/repository`.
 
-A standalone tool to resolve and download Maven dependencies to a specific local folder, and also genrate classpath file for scripting. Uses the same structure as any maven repository(even your local maven repository has the same structure).
-
+> **Note**: Looking at integration with [mcs](https://github.com/mthmulders/mcs)? See the [development notes](README.dev.md).
 
 ## Why
 
-To deploy an app to remote servers you need your classes and dependencies available to run the app. Usually means copying dependencies to a lib folder alongside your jar, or even worse, fat jars.
+To deploy a Java app to a remote server you need your classes **and** all of your dependencies. Usually, this means copying dependencies to a `lib/` folder alongside your JAR, or even worse, creating fat JARs.
 
-Sadly with Spring bloat, and Hibernate, even a moderately sized Java app that is like **500KB** jar, that does some crud in database, has few entities and a bit of logic, draws in **50MB** of dependencies. And it easily grows over **100MB**. So for those classic cases it is really a **200x** size diff for deploying a newer version of an app. And it is even worse for microservices, as even less code will be in each service versus standard pile of dependencies.
+With frameworks like Spring and Hibernate, even a moderately sized app — say **500 KB** of *your* code — can carry **50–100 MB** of dependencies. That's a **200× size difference** every time you deploy a new version. And it gets worse with microservices: each service has less code but the same pile of libraries.
 
-### You really should optimize the process
+### You Really Should Optimize the Process
 
-This tool is specifically meant to be used to optimize how you deploy, for testing, staging and production.
+The smarter approach is to separate your **application code** from its **dependencies**, and manage them independently:
 
-The idea is to:
+- Maintain a **shared dependency folder** (on a network drive, or synced via rsync/scp/git)
+- Treat it as a local Maven repository — shared by all your deployed applications
+- Deploy only the **thin JAR** (your code) + a small `dependencies.txt` manifest per release
+- At startup, use `maven-get-deps` to assemble the `CLASSPATH` from the shared folder instantly
 
-- create a shared dependency folder that you can provision to servers 
-    - using a network drive 
-    - or by copying it to each server (rsync, scp, git, etc.)
-- use the folder as a local repository (sum of runtime dependencies of your app versions)
-- use this tool to generate a list of dependencies in a file that you deploy along with your jar
-- use the file to start the applications by a simple script without needing to install or copy those dependencies to application folder
+This gives you **lean, fast releases**: a 500 KB JAR deploys in milliseconds over the network. Dependencies only need to be synced when they actually change, not on every release. Multiple app versions on the same server share the same library files on disk.
 
-This makes for leaner releases and faster deployments. How exactly you combine this is up to you.
+For a detailed guide on setting this up, see **[README.usage-deploy.md](README.usage-deploy.md)**.
 
-If you have multiple versions of your java binaries available for instances to use, the shared local repository will have the combination of all of the dependencies, but the classpath file in each distributed binary version will help you cherry pick for classpath only those you need. Later you can use the classpath files to clean the shared repo after you remove a version.
 
-You can also rely on `--classpath` mode available in both tools to directly output an OS-friendly formatted `CLASSPATH` string ready to be injected into an environment variable.
+## Download
 
-Here is an example script in bash:
-```sh
-LIB_ROOT="/opt/shared/lib"
-DEPS_FILE="dependencies.txt"
+Manually download from [GitHub Releases](https://github.com/hrgdavor/maven-get-deps/releases).
 
-# Assuming dependencies.txt contains the standard relative paths format:
-CP_STRING=$(java -jar maven-get-deps-cli.jar --input "$DEPS_FILE" --convert-format path --classpath --cache "$LIB_ROOT")
-# Or using the zig version:
-# CP_STRING=$(maven_get_deps -i "$DEPS_FILE" -cf path --classpath --cache "$LIB_ROOT")
+| Artifact | Description |
+|---|---|
+| `maven-get-deps-linux-x64.tar.gz` | Native Linux binary |
+| `maven-get-deps-windows-x64.zip` | Native Windows binary |
+| `maven-get-deps-cli.jar` | Fat JAR — runs anywhere with `java -jar` |
 
-export CLASSPATH="app.jar:$CP_STRING"
-java com.example.Main
+> The Linux/Windows binaries are built with GraalVM native image for instant startup. For the high-performance Zig binary, see **[README.zig.md](README.zig.md)**.
+
+To automate downloading the latest release, query the GitHub API:
+`https://api.github.com/repos/hrgdavor/maven-get-deps/releases/latest`
+
+---
+
+## Use Cases
+
+| Guide | Description |
+|---|---|
+| [Deployment & Shared Library](README.usage-deploy.md) | Deploy thin JARs + a shared dep folder. Avoid fat JARs entirely. |
+| [Classpath Generation](README.usage-classpath.md) | Generate `CLASSPATH` from a dep file or `pom.xml`. Includes multi-module `--extra-classpath` guide. |
+| [CVE Vulnerability Scanning](README.usage-cve.md) | Offline CVE scanning with OWASP, CI/CD build-breaking, and clean version search. |
+| [Zig Binary Guide](README.zig.md) | Ultra-fast, zero-dependency binary. Deployment philosophy, SDKMAN!, JVM-vs-container. |
+| [Docker Integration (Dynamic)](README.docker.md) | Thin Docker images with a shared Maven cache. Includes K8s InitContainer pattern. |
+| [Docker Integration (Static)](README.static-docker.md) | Bake a fixed classpath into Docker at build time. Most secure, zero runtime tools. |
+| [Build & Development](README.dev.md) | Building the project, GraalVM native images, and MetadataMerger. |
+
+---
+
+## Quick Start
+
+### Maven Plugin (Resolve & List Dependencies)
+
+```bash
+mvn io.github.hrgdavor:maven-get-deps:1.0.0:get-deps [-DdestDir=<PATH>] [-DcopyJars=true] [-DoutputFile=deps.txt]
 ```
 
-Here is an example script in PowerShell:
-```powershell
-$LIB_ROOT = "C:\opt\shared\lib"
-$DEPS_FILE = "dependencies.txt"
+### CLI (Generate Classpath)
 
-# Using Java executable
-$CP_STRING = java -jar maven-get-deps-cli.jar --input $DEPS_FILE --convert-format path --classpath --cache $LIB_ROOT
-# Or using the Zig executable:
-# $CP_STRING = maven_get_deps -i $DEPS_FILE -cf path --classpath --cache $LIB_ROOT
+```bash
+# From pom.xml
+java -jar maven-get-deps-cli.jar --pom pom.xml --classpath
 
-$env:CLASSPATH = "app.jar;" + $CP_STRING
-java com.example.Main
+# From a dependency list file
+java -jar maven-get-deps-cli.jar --input deps.txt --convert-format path --classpath
 ```
 
->Notice, I have just learned while doing this project (something I should have know ages ago) that java will look if CLASSPATH variable is set and use it. This removes noise of the huge classpath from process view when using `ps`, and may have some other benefits.
+### CLI (CVE Scan)
 
-# Download
-
-Manually download from https://github.com/hrgdavor/maven-get-deps/releases.
-
-- `maven-get-deps-linux-x64.tar.gz` generic linux binary in tar.gz
-- `maven-get-deps-windows-x64.zip` - windows in zip file
-- `maven-get-deps-cli.jar` - fat jar that can be executed with `java -jar`
-
-For detailed information on the high-performance Zig binary, see [README.zig.md](README.zig.md).
-
-To automate download of latest release artifacts (CLI-jar, win64 exe, Linux binary) with script you can use this URL https://api.github.com/repos/hrgdavor/maven-get-deps/releases/latest and parse the JSON.
-
-# Standalone CLI Usage
-
-Run the tool binary for linux/windows or using `java -jar target/maven-get-deps-1.0.0-cli.jar` and add parameters:
-
-```powershell
---pom <YOUR_POM_PATH> [--dest-dir <DEST_PATH>] [--cache <CACHE_M2_PATH>] [--no-copy]
+```bash
+java -jar maven-get-deps-cli.jar --cve-update                     # First-time DB setup
+java -jar maven-get-deps-cli.jar --pom pom.xml --cve-report cve.md  # Scan
 ```
 
-### Arguments
+---
 
-- `-p, --pom <arg>`:  (default `pom.xml`) Path to the pom  to analyze.
-- `-i, --input <arg>`: Input text file with list of dependencies to analyze or convert.
-- `-o, --output <arg>`: (Optional) Path to a file for the dependency list, or will be printed out.
-- `-d, --dest-dir <arg>`: (Optional) Destination directory for jar files. 
-- `-n, --no-copy`: (Optional) Disable copying. Even if `dest-dir` is provided, files will not be copied.
-- `-c, --cache <arg>`: (default  `~/.m2/repository`) Local repository to use as a **source**.
-- `-s, --scopes <arg>`: (Optional, default: `compile,runtime`) Comma-separated list of scopes to include.
-- `--report`: (Optional) Path to a file to generate a detailed Markdown report of dependency sizes.
-- `-cp, --classpath`: (Optional) Formats the output as a single OS-separated CLASSPATH string.
-- `-cf, --convert-format <format>`: Convert dependency list format (`colon` | `path`). Requires `--input`.
-- `-cr, --cve-report <file>`: Generate a CVE markdown report.
-- `-cd, --cve-data <dir>`: Path to local OWASP H2 database directory.
-- `-cv, --cve-check-versions`: For vulnerable dependencies, search for the nearest clean version.
-- `-ct, --cve-severity-threshold <val>`: CVSS severity threshold (0.0 to 10.0). Defaults to `8.0`.
-- `-cu, --cve-update`: Update the local CVE database and exit.
-- `-nk, --nvd-api-key <key>`: NVD API key for faster updates.
+## CLI Arguments
 
-#### Example
+| Flag | Description |
+|---|---|
+| `-p, --pom <file>` | Path to pom.xml (default: `pom.xml`) |
+| `-i, --input <file>` | Input dependency list file |
+| `-o, --output <file>` | Save output to file |
+| `-d, --dest-dir <dir>` | Destination directory for JAR copies |
+| `-n, --no-copy` | Disable JAR copying even if `--dest-dir` is set |
+| `-c, --cache <dir>` | Local Maven repository (default: `~/.m2/repository`) |
+| `-s, --scopes <list>` | Comma-separated scopes (default: `compile,runtime`) |
+| `--report <file>` | Generate a Markdown dependency-size report |
+| `-cp, --classpath` | Output as OS-separated `CLASSPATH` string |
+| `-cf, --convert-format <fmt>` | Convert format: `colon` or `path` |
+| `-ecp, --extra-classpath <file>` | File with extra classpath entries to append (one per line) |
+| `-cr, --cve-report <file>` | Generate CVE Markdown report |
+| `-cd, --cve-data <dir>` | OWASP H2 database directory |
+| `-cu, --cve-update` | Download/update the local CVE database |
+| `-nk, --nvd-api-key <key>` | NVD API key for faster updates |
+| `-cv, --cve-check-versions` | Search for nearest clean version for vulnerable deps |
+| `-ct, --cve-severity-threshold <val>` | CVSS threshold for build-breaking (default: `8.0`) |
 
-```powershell
-# Default: List paths relative to repositry root (no copying)
-java -jar target/maven-get-deps-1.0.0-cli.jar --pom pom.xml
+### Maven Plugin Parameters
 
-# Copy to a separate folder and list paths relative to repositry root
-java -jar target/maven-get-deps-1.0.0-cli.jar --pom pom.xml --dest-dir ./out
-```
+| Parameter | Description |
+|---|---|
+| `destDir` | Directory for listing/copying artifacts |
+| `copyJars` | Copy JARs to `destDir` (default: `false`) |
+| `outputFile` | Save dependency list to file |
+| `scopes` | Scopes to include (default: `compile,runtime`) |
+| `reportFile` | Markdown dependency-size report |
+| `classpath` | Output as OS-separated `CLASSPATH` string (default: `false`) |
+| `cache` | Override local Maven repository path |
+
+---
+
+## How It Works
+
+- **Source (Cache)**: Your local Maven repository (`~/.m2/repository`). Used as the primary source for JARs and POMs.
+- **Destination (`destDir`)**: Optional standalone folder. If `copyJars=true`, artifacts are copied from Source to Destination.
+- Relative paths are **interchangeable** — they follow the standard Maven layout (`group/artifact/version/file.jar`).
 
 ## Dependency Size Report
 
-- **CLI**: `--report report.md`
-- **Maven Plugin**: `-DreportFile=report.md`
-
-#### How the Report Works
-The report attributes size "incrementally" following the order of dependencies in your `pom.xml`:
-1.  **Unique Contribution**: For each top-level dependency, the tool sums the size of its own JAR and all its transitive dependencies.
-2.  **Deduplication**: If a transitive dependency is shared by multiple top-level dependencies, it is **only counted once**—attributing it to the *first* dependency in the POM that requires it.
-3.  **Format**: The output is a markdown table with `Size (KB)` and `Dependency`, followed by the total size of all unique artifacts.
-
-This approach helps you identify which specific top-level dependencies are responsible for the bulk of your application's "weight" after transitives are factored in.
-
-This is how it looks like for this project (at the time of writing):
-
-| Size (KB) | Dependency                                                      |
-|----------:|:----------------------------------------------------------------|
-|       156 | org.apache.maven.resolver:maven-resolver-api:1.9.18             |
-|        53 | org.apache.maven.resolver:maven-resolver-spi:1.9.18             |
-|       194 | org.apache.maven.resolver:maven-resolver-util:1.9.18            |
-|       314 | org.apache.maven.resolver:maven-resolver-impl:1.9.18            |
-|        43 | org.apache.maven.resolver:maven-resolver-connector-basic:1.9.18 |
-|        60 | org.apache.maven.resolver:maven-resolver-transport-http:1.9.18  |
-|        24 | org.apache.maven.resolver:maven-resolver-supplier:1.9.18        |
-|        77 | org.apache.maven:maven-resolver-provider:3.9.6                  |
-|       215 | org.apache.maven:maven-model:3.9.6                              |
-|        71 | commons-cli:commons-cli:1.6.0                                   |
-|        58 | org.slf4j:slf4j-simple:1.7.36                                   |
-
-> Total size: 1297940 bytes (1.24 MB)
-
-# Maven Plugin Usage
-
-The plugin is deployed to Maven Central. You can add it to your `pom.xml` under `<build><plugins>` or run it directly from the command line once resolved.
-
-```powershell
-mvn io.github.hrgdavor:maven-get-deps:1.0.0:get-deps [-DdestDir=<DEST_PATH>] [-DcopyJars=true] [-DoutputFile=<OUTPUT_FILE>]
+```bash
+java -jar maven-get-deps-cli.jar --pom pom.xml --report report.md
 ```
 
-### Goal Parameters
+Attributes size "incrementally" — each top-level dependency is charged for itself plus all its unique transitives (not counted by any earlier dependency). This pinpoints which direct dependencies are responsible for the most "weight."
 
-- `destDir`: (Optional) A separate directory for listing/copying. If provided, paths will be relative to this folder. If not provided, paths are relative to your local Maven repository.
-- `copyJars`: (Optional, default: `false`) Whether to copy dependencies from your local Maven repo to `destDir`. (Only works if `destDir` is provided).
-- `outputFile`: (Optional) Save the list to a file.
-- `scopes`: (Optional, default: `compile,runtime`) Scopes to include.
-- `reportFile` : (Optional) Path to a file to generate a detailed Markdown report of dependency sizes.
-- `classpath` : (Optional, default: `false`) Outputs dependencies as a single OS-separated string suitable for the `CLASSPATH` environment variable.
-- `cache` : (Optional) Path to your local maven repository. Used as the prefix root for paths when `classpath` is true, otherwise uses `~/.m2/repository`.
+---
 
-### Example
+## Build & Development
 
-```powershell
-# Default: List all runtime dependencies relative to your .m2
-mvn io.github.hrgdavor:maven-get-deps:1.0.0:get-deps
-
-# Convert dependency output into a CLASSPATH string:
-mvn io.github.hrgdavor:maven-get-deps:1.0.0:get-deps -Dclasspath=true
-
-# Copy runtime dependencies to a standalone folder
-mvn io.github.hrgdavor:maven-get-deps:1.0.0:get-deps -DdestDir=target/copy -DcopyJars=true
-```
-
-
-# How the tool works
-
-- **Source (Cache)**: This is your local Maven repository (defaults to `~/.m2/repository`). The tool always uses this as the primary source for JARs and POMs to avoid redundant downloads.
-- Downloads missing dependencies (most of the time will not have to if you build your project before calling the tool, all dependencies will be in maven local repo)
-- **Destination (`destDir`)**: An **optional** standalone directory.
-  - If `copyJars` is enabled, artifacts are copied **from** the Source **to** this Destination.
-- tool calculates relative paths. The relative path results are **interchangeable** (e.g., `org/apache/maven/...`) as the destination directory follows the standard Maven layout.
-
-## OWASP Fast Dependency Check
-
-For projects that strictly use Maven Central and do not bring in random external JARs, you can use `maven-get-deps` to populate a shared local repository and configure the OWASP Dependency-Check plugin to run significantly faster. By disabling JAR analysis and relying strictly on Maven's dependency graph, the scan time is drastically reduced.
-
-Here is an example configuration for using OWASP:
-
-```xml
-<configuration>
-    <autoUpdate>false</autoUpdate>
-    <dataDirectory>/path/to/shared/h2</dataDirectory>
-    
-    <!-- This stops it from opening JARs -->
-    <archiveAnalyzerEnabled>false</archiveAnalyzerEnabled>
-    <jarAnalyzerEnabled>false</jarAnalyzerEnabled>
-    
-    <!-- This relies strictly on Maven's dependency graph (Fast) -->
-    <centralAnalyzerEnabled>true</centralAnalyzerEnabled> 
-</configuration>
-```
-
-## CVE Report (CLI — `executable` profile only)
-
-The Java CLI (built with `-Pexecutable`) downloads a local OWASP H2 CVE database and queries it
-for known vulnerabilities — no network access is performed during the actual scan.
-
-The H2 database is stored in `~/.m2/dependency-check-data` by default and can be pointed elsewhere with
-`--cve-data`.
-
-### Step 1: Populate / update the local CVE database
-
-```powershell
-# First run (or regular refresh) — downloads 330K+ NVD CVE records
-java -jar maven-get-deps-1.0.0-cli.jar --cve-update
-
-# With an NVD API key (highly recommended — avoids rate-limiting, 10× faster)
-java -jar maven-get-deps-1.0.0-cli.jar --cve-update --nvd-api-key <YOUR_KEY>
-
-# Custom database location
-java -jar maven-get-deps-1.0.0-cli.jar --cve-update --cve-data /shared/cve-db
-```
-
-> **Get a free NVD API key** at [nvd.nist.gov/developers/request-an-api-key](https://nvd.nist.gov/developers/request-an-api-key).
-> Without a key, downloads still work but are rate-limited and much slower.
->
-> Schedule `--cve-update` as a cron job / Task Scheduler entry to keep data current:
-> ```
-> # Linux/macOS cron (daily at 03:00)
-> 0 3 * * * java -jar /opt/maven-get-deps-cli.jar --cve-update --nvd-api-key $NVD_KEY
-> ```
-
-### Step 2: Generate the CVE report
-
-```powershell
-# From a pom.xml (default --cve-data location used automatically)
-java -jar maven-get-deps-1.0.0-cli.jar --pom pom.xml --cve-report cve-report.md
-
-# From a dependency list file
-java -jar maven-get-deps-1.0.0-cli.jar --input deps.txt --cve-report cve-report.md
-
-# Custom database location
-java -jar maven-get-deps-1.0.0-cli.jar --pom pom.xml --cve-report cve-report.md `
-    --cve-data /shared/cve-db
-```
-
-### Report format
-
-The report is a two-section markdown file:
-
-**Section 1 — Summary table** (one row per direct dependency):
-```
-| Direct Dependency | Status | Transitive Issues |
-|---|:---:|:---:|
-| `org.example:foo:1.0` | ✅ CLEAN | — |
-| `log4j:log4j:1.2.17` | ⚠ CVE | 0 with CVEs |
-```
-
-**Section 2 — Detailed sections** (one `###` block per direct dependency showing all transitives):
-```
-| Artifact | Version | CVEs | Nearest Clean Version |
-|---|---|---|---|
-| `log4j:log4j` | 1.2.17 | CVE-2019-17571... | 2.17.1 |
-```
-
-## Clean Version Search (`--cve-check-versions`)
-
-When enabled, the tool will query Maven Central for all available versions of a vulnerable artifact and perform a bulk scan to find the **nearest clean version** (the closest version in history that does not contain known vulnerabilities). This is suggested in the "Details" section of the report.
-
-## Build Breaking / Severity Threshold (`--cve-severity-threshold`)
-
-You can use the tool to break a CI/CD build if vulnerabilities above a certain severity are found.
-
-```powershell
-# Exit with code 1 if any CVE with score >= 7.5 is found
-java -jar maven-get-deps-cli.jar --pom pom.xml --cve-severity-threshold 7.5
-```
-
-If the threshold is met or exceeded, the tool will print a warning and exit with **code 1**. Otherwise, it exits with code 0.
-
-## Dependency Format Conversion
-
-The tool can convert between "Colon format" (`group:artifact:version`) and "Path format" (`group/artifact/version/...`).
-
-```powershell
-# Convert a list of paths to colon format
-java -jar maven-get-deps-cli.jar --input paths.txt --convert-format colon
-```
-
-# Build & Development
-
-For instructions on building the project, generating native images, and maintaining GraalVM metadata, see [README.dev.md](README.dev.md).
-
+See [README.dev.md](README.dev.md) for build instructions, GraalVM native image generation, and metadata maintenance.

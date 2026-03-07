@@ -81,6 +81,9 @@ public class Main {
         options.addOption(new Option("cp", "classpath", false,
                 "Output as a valid CLASSPATH string joined by the OS-specific path separator"));
 
+        options.addOption(new Option("ecp", "extra-classpath", true,
+                "Path to a file containing additional classpath entries (one per line) to append."));
+
         options.addOption(new Option("cr", "cve-report", true,
                 "CVE report output file (queries local OWASP H2 database, default path used if --cve-data omitted)"));
         options.addOption(new Option("cd", "cve-data", true,
@@ -109,13 +112,14 @@ public class Main {
             String convertFormat = cmd.getOptionValue("convert-format");
             String outputPath = cmd.getOptionValue("output");
             String cachePath = cmd.getOptionValue("cache");
+            String extraClasspathFile = cmd.getOptionValue("extra-classpath");
 
             String scopesStr = cmd.getOptionValue("scopes", "compile,runtime");
             boolean copyJars = !cmd.hasOption("no-copy");
             boolean classpathMode = cmd.hasOption("classpath");
 
             if (inputPath != null && convertFormat != null) {
-                runConvert(inputPath, outputPath, convertFormat, classpathMode, cachePath);
+                runConvert(inputPath, outputPath, convertFormat, classpathMode, cachePath, extraClasspathFile);
                 return;
             }
 
@@ -169,7 +173,7 @@ public class Main {
             }
 
             run(destDir, pomPath, outputPath, reportPath, cachePath, scopesStr, copyJars, classpathMode,
-                    cveReportPath, cveDataDir);
+                    cveReportPath, cveDataDir, extraClasspathFile);
 
         } catch (ParseException e) {
             System.out.println(e.getMessage());
@@ -183,7 +187,7 @@ public class Main {
 
     private static void run(String destDir, String pomPath, String outputPath, String reportPath, String cachePath,
             String scopesStr, boolean copyJars, boolean classpathMode,
-            String cveReportPath, String cveDataDir) throws Exception {
+            String cveReportPath, String cveDataDir, String extraClasspathFile) throws Exception {
 
         // Size report logic remains as is (still uses pomPath)
         File pomFile = new File(pomPath);
@@ -244,9 +248,13 @@ public class Main {
         if (outputPath != null) {
             try (PrintWriter writer = new PrintWriter(new File(outputPath))) {
                 if (classpathMode) {
-                    writer.println(result.relativePaths.stream()
+                    List<String> paths = result.relativePaths.stream()
                             .map(p -> new File(sourceRepoPath, p).getAbsolutePath())
-                            .collect(Collectors.joining(File.pathSeparator)));
+                            .collect(Collectors.toList());
+                    if (extraClasspathFile != null) {
+                        paths.addAll(java.nio.file.Files.readAllLines(new File(extraClasspathFile).toPath()));
+                    }
+                    writer.println(String.join(File.pathSeparator, paths));
                 } else {
                     for (String path : result.relativePaths) {
                         writer.println(path);
@@ -256,9 +264,13 @@ public class Main {
             System.out.println("Output written to: " + outputPath);
         } else {
             if (classpathMode) {
-                System.out.println(result.relativePaths.stream()
+                List<String> paths = result.relativePaths.stream()
                         .map(p -> new File(sourceRepoPath, p).getAbsolutePath())
-                        .collect(Collectors.joining(File.pathSeparator)));
+                        .collect(Collectors.toList());
+                if (extraClasspathFile != null) {
+                    paths.addAll(java.nio.file.Files.readAllLines(new File(extraClasspathFile).toPath()));
+                }
+                System.out.println(String.join(File.pathSeparator, paths));
             } else {
                 for (String path : result.relativePaths) {
                     System.out.println(path);
@@ -306,7 +318,7 @@ public class Main {
     }
 
     private static void runConvert(String inputPath, String outputPath, String convertFormat, boolean classpathMode,
-            String cachePath) throws Exception {
+            String cachePath, String extraClasspathFile) throws Exception {
         boolean toColon = "colon".equalsIgnoreCase(convertFormat);
         boolean toPath = "path".equalsIgnoreCase(convertFormat);
 
@@ -350,6 +362,12 @@ public class Main {
 
         if (classpathMode) {
             String combined = String.join(File.pathSeparator, collectedPaths);
+            if (extraClasspathFile != null) {
+                java.util.List<String> extras = java.nio.file.Files.readAllLines(new File(extraClasspathFile).toPath());
+                if (!extras.isEmpty()) {
+                    combined += File.pathSeparator + String.join(File.pathSeparator, extras);
+                }
+            }
             if (writer != null) {
                 writer.println(combined);
             } else {

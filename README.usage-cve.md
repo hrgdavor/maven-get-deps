@@ -1,0 +1,134 @@
+# CVE Vulnerability Scanning
+
+The Java CLI (built with the `-Pexecutable` Maven profile) includes an embedded OWASP Dependency-Check engine. It scans your dependencies against a local H2 database of NVD CVE records — **no network access** is required during the actual scan.
+
+> **Note**: This feature is only available in the executable JAR / native binary, not the Maven plugin.
+
+---
+
+## Step 1: Populate / Update the Local CVE Database
+
+The H2 database is stored at `~/.m2/dependency-check-data` by default.
+
+```bash
+# First-time setup (downloads ~330K+ NVD CVE records, may take several minutes)
+java -jar maven-get-deps-cli.jar --cve-update
+
+# Highly recommended: use a free NVD API key for 10x faster downloads
+java -jar maven-get-deps-cli.jar --cve-update --nvd-api-key <YOUR_KEY>
+
+# Custom database location
+java -jar maven-get-deps-cli.jar --cve-update --cve-data /shared/cve-db
+```
+
+> **Get a free NVD API key** at [nvd.nist.gov/developers/request-an-api-key](https://nvd.nist.gov/developers/request-an-api-key).
+
+### Scheduled Updates
+
+Keep the database current by scheduling `--cve-update` as a recurring task:
+
+```cron
+# Linux/macOS: daily at 03:00
+0 3 * * * java -jar /opt/maven-get-deps-cli.jar --cve-update --nvd-api-key $NVD_KEY
+```
+
+```powershell
+# Windows Task Scheduler (daily)
+schtasks /create /tn "CVE DB Update" /tr "java -jar C:\tools\maven-get-deps-cli.jar --cve-update" /sc daily /st 03:00
+```
+
+---
+
+## Step 2: Generate a CVE Report
+
+```bash
+# Scan from a pom.xml (default database location used automatically)
+java -jar maven-get-deps-cli.jar --pom pom.xml --cve-report report.md
+
+# Scan from a pre-generated dependency list
+java -jar maven-get-deps-cli.jar --input dependencies.txt --cve-report report.md
+
+# Custom database location
+java -jar maven-get-deps-cli.jar --pom pom.xml --cve-report report.md --cve-data /shared/cve-db
+```
+
+---
+
+## Report Format
+
+The output is a two-section markdown file:
+
+**Section 1 — Summary table** (one row per direct dependency):
+```
+| Direct Dependency         | Status    | Transitive Issues |
+|---------------------------|:---------:|:-----------------:|
+| org.example:foo:1.0       | ✅ CLEAN  | —                 |
+| log4j:log4j:1.2.17        | ⚠ CVE     | 0 with CVEs       |
+```
+
+**Section 2 — Details per dependency** (one block per direct dependency with issues):
+```
+| Artifact        | Version | CVEs                                                         | Nearest Clean |
+|-----------------|---------|--------------------------------------------------------------|---------------|
+| log4j:log4j     | 1.2.17  | [CVE-2019-17571](https://nvd.nist.gov/vuln/detail/...) ...  | 2.17.1        |
+```
+
+---
+
+## Clean Version Search (`--cve-check-versions`)
+
+When enabled, the tool queries Maven Central for all available versions of each vulnerable artifact and performs a bulk scan to identify the **nearest clean version** — the closest version in history that has no known CVEs.
+
+```bash
+java -jar maven-get-deps-cli.jar --pom pom.xml --cve-report report.md --cve-check-versions
+```
+
+The suggested clean version will appear in the **Nearest Clean** column of the report.
+
+---
+
+## Build Breaking / Severity Threshold (`--cve-severity-threshold`)
+
+Use this in CI/CD pipelines to fail the build if vulnerabilities above a given severity are found (CVSS score 0.0 – 10.0, default: `8.0`).
+
+```bash
+# Exit code 1 if any CVE has score >= 7.5
+java -jar maven-get-deps-cli.jar --pom pom.xml --cve-report report.md --cve-severity-threshold 7.5
+```
+
+If no CVEs meet the threshold, the tool exits with **code 0**. Otherwise, it prints a warning and exits with **code 1**, breaking the pipeline.
+
+### Example CI Pipeline Step (GitHub Actions):
+```yaml
+- name: CVE Scan
+  run: |
+    java -jar maven-get-deps-cli.jar \
+      --input target/dependencies.txt \
+      --cve-report target/cve-report.md \
+      --cve-severity-threshold 7.0 \
+      --cve-data $HOME/.m2/dependency-check-data
+- name: Upload CVE Report
+  uses: actions/upload-artifact@v4
+  if: always()
+  with:
+    name: cve-report
+    path: target/cve-report.md
+```
+
+---
+
+## Using OWASP Directly (without built-in scan)
+
+For projects using the OWASP Maven plugin directly, you can configure it to run faster by skipping JAR analysis and relying on Maven's dependency graph (PURL-only lookup):
+
+```xml
+<configuration>
+    <autoUpdate>false</autoUpdate>
+    <dataDirectory>/path/to/shared/h2</dataDirectory>
+    <!-- Skip slow file analysis -->
+    <archiveAnalyzerEnabled>false</archiveAnalyzerEnabled>
+    <jarAnalyzerEnabled>false</jarAnalyzerEnabled>
+    <!-- Rely strictly on Maven coordinates (very fast) -->
+    <centralAnalyzerEnabled>true</centralAnalyzerEnabled>
+</configuration>
+```
