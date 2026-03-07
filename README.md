@@ -68,6 +68,8 @@ Manually download from https://github.com/hrgdavor/maven-get-deps/releases.
 - `maven-get-deps-windows-x64.zip` - windows in zip file
 - `maven-get-deps-cli.jar` - fat jar that can be executed with `java -jar`
 
+For detailed information on the high-performance Zig binary, see [README.zig.md](README.zig.md).
+
 To automate download of latest release artifacts (CLI-jar, win64 exe, Linux binary) with script you can use this URL https://api.github.com/repos/hrgdavor/maven-get-deps/releases/latest and parse the JSON.
 
 # Standalone CLI Usage
@@ -81,13 +83,21 @@ Run the tool binary for linux/windows or using `java -jar target/maven-get-deps-
 ### Arguments
 
 - `-p, --pom <arg>`:  (default `pom.xml`) Path to the pom  to analyze.
+- `-i, --input <arg>`: Input text file with list of dependencies to analyze or convert.
 - `-o, --output <arg>`: (Optional) Path to a file for the dependency list, or will be printed out.
 - `-d, --dest-dir <arg>`: (Optional) Destination directory for jar files. 
-- `-n, --no-copy`: (Optional) Disable copying. Even if `dest-dir` is provided, files will not be copied (only path relativization will use it).
+- `-n, --no-copy`: (Optional) Disable copying. Even if `dest-dir` is provided, files will not be copied.
 - `-c, --cache <arg>`: (default  `~/.m2/repository`) Local repository to use as a **source**.
 - `-s, --scopes <arg>`: (Optional, default: `compile,runtime`) Comma-separated list of scopes to include.
-- `--report`: (Optional) Path to a file to generate a detailed Markdown report of dependency sizes
-- `-cp, --classpath`: (Optional) Formats the output array as a single OS-separated CLASSPATH string instead of listing each element on a new line. Handles File path separators properly.
+- `--report`: (Optional) Path to a file to generate a detailed Markdown report of dependency sizes.
+- `-cp, --classpath`: (Optional) Formats the output as a single OS-separated CLASSPATH string.
+- `-cf, --convert-format <format>`: Convert dependency list format (`colon` | `path`). Requires `--input`.
+- `-cr, --cve-report <file>`: Generate a CVE markdown report.
+- `-cd, --cve-data <dir>`: Path to local OWASP H2 database directory.
+- `-cv, --cve-check-versions`: For vulnerable dependencies, search for the nearest clean version.
+- `-ct, --cve-severity-threshold <val>`: CVSS severity threshold (0.0 to 10.0). Defaults to `8.0`.
+- `-cu, --cve-update`: Update the local CVE database and exit.
+- `-nk, --nvd-api-key <key>`: NVD API key for faster updates.
 
 #### Example
 
@@ -248,11 +258,33 @@ The report is a two-section markdown file:
 
 **Section 2 — Detailed sections** (one `###` block per direct dependency showing all transitives):
 ```
-### log4j:log4j:1.2.17
+| Artifact | Version | CVEs | Nearest Clean Version |
+|---|---|---|---|
+| `log4j:log4j` | 1.2.17 | CVE-2019-17571... | 2.17.1 |
+```
 
-| Artifact | Version | CVEs |
-|---|---|---|
-| `log4j:log4j` | 1.2.17 | CVE-2019-17571, CVE-2022-23302 |
+## Clean Version Search (`--cve-check-versions`)
+
+When enabled, the tool will query Maven Central for all available versions of a vulnerable artifact and perform a bulk scan to find the **nearest clean version** (the closest version in history that does not contain known vulnerabilities). This is suggested in the "Details" section of the report.
+
+## Build Breaking / Severity Threshold (`--cve-severity-threshold`)
+
+You can use the tool to break a CI/CD build if vulnerabilities above a certain severity are found.
+
+```powershell
+# Exit with code 1 if any CVE with score >= 7.5 is found
+java -jar maven-get-deps-cli.jar --pom pom.xml --cve-severity-threshold 7.5
+```
+
+If the threshold is met or exceeded, the tool will print a warning and exit with **code 1**. Otherwise, it exits with code 0.
+
+## Dependency Format Conversion
+
+The tool can convert between "Colon format" (`group:artifact:version`) and "Path format" (`group/artifact/version/...`).
+
+```powershell
+# Convert a list of paths to colon format
+java -jar maven-get-deps-cli.jar --input paths.txt --convert-format colon
 ```
 
 # Build & Development

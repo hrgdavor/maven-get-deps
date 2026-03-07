@@ -12,6 +12,7 @@ pub fn main() !void {
     var convert_format: ?deps_format.FormatType = null;
     var classpath_mode: bool = false;
     var cache_dir: ?[]const u8 = null;
+    var download_mode: bool = false;
 
     var i: usize = 1;
     while (i < args.len) : (i += 1) {
@@ -41,6 +42,8 @@ pub fn main() !void {
             }
         } else if (std.mem.eql(u8, arg, "--classpath") or std.mem.eql(u8, arg, "-cp")) {
             classpath_mode = true;
+        } else if (std.mem.eql(u8, arg, "--download")) {
+            download_mode = true;
         } else if (std.mem.eql(u8, arg, "--cache") or std.mem.eql(u8, arg, "-c")) {
             i += 1;
             if (i < args.len) {
@@ -53,12 +56,12 @@ pub fn main() !void {
     }
 
     if (input_file) |in_file| {
-        if (convert_format == null) {
+        if (convert_format == null and !download_mode) {
             std.debug.print("Missing --convert-format alongside --input\n", .{});
             std.process.exit(1);
         }
 
-        const fmt = convert_format.?;
+        const fmt = convert_format orelse .path;
         const file = try std.fs.cwd().openFile(in_file, .{ .mode = .read_only });
         defer file.close();
 
@@ -75,6 +78,9 @@ pub fn main() !void {
             }
         };
 
+        var client = std.http.Client{ .allocator = allocator };
+        defer client.deinit();
+
         var stdout = std.fs.File.stdout();
         var is_first: bool = true;
 
@@ -85,6 +91,24 @@ pub fn main() !void {
                     try deps_format.formatColon(allocator, info)
                 else
                     try deps_format.formatPath(allocator, info);
+
+                if (download_mode and !info.isLocal()) {
+                    const relative_path = try deps_format.formatPath(allocator, info);
+                    defer allocator.free(relative_path);
+                    const full_path = try std.fs.path.join(allocator, &[_][]const u8{ source_repo_path, relative_path });
+                    defer allocator.free(full_path);
+
+                    std.fs.cwd().access(full_path, .{}) catch |err| {
+                        if (err == error.FileNotFound) {
+                            const url = try deps_format.formatMavenUrl(allocator, info);
+                            defer allocator.free(url);
+                            std.debug.print("Downloading {s} to {s}...\n", .{ url, full_path });
+                            try downloadFile(&client, url, full_path);
+                        } else {
+                            return err;
+                        }
+                    };
+                }
 
                 if (classpath_mode) {
                     if (!is_first) {
@@ -101,7 +125,7 @@ pub fn main() !void {
                         }
                     }
                     try stdout.writeAll(formatted);
-                } else {
+                } else if (!download_mode) {
                     try stdout.writeAll(formatted);
                     try stdout.writeAll("\n");
                 }
@@ -115,5 +139,38 @@ pub fn main() !void {
         return;
     }
 
-    std.debug.print("Usage: maven_get_deps --input <file> --convert-format <colon|path> [--classpath] [--prefix <dir>]\n", .{});
+    std.debug.print("Usage: maven_get_deps --input <file> [--convert-format <colon|path>] [--download] [--classpath] [--cache <dir>]\n", .{});
+}
+
+fn downloadFile(client: *std.http.Client, url: []const u8, dest_path: []const u8) !void {
+    const uri = try std.Uri.parse(url);
+
+    var server_header_buffer: [16 * 1024]u8 = undefined;
+    var req = try client.open(.GET, uri, .{
+        .server_header_buffer = &server_header_buffer,
+    });
+    defer req.deinit();
+
+    try req.send();
+    try req.wait();
+
+    if (req.response.status != .ok) {
+        std.debug.print("Failed to download {s}: {d}\n", .{ url, req.response.status });
+        return error.DownloadFailed;
+    }
+
+    // Ensure directory exists
+    if (std.fs.path.dirname(dest_path)) |dir| {
+        try std.fs.cwd().makePath(dir);
+    }
+
+    const file = try std.fs.cwd().createFile(dest_path, .{});
+    defer file.close();
+
+    var buffer: [16384]u8 = undefined;
+    while (true) {
+        const bytes_read = try req.read(&buffer);
+        if (bytes_read == 0) break;
+        try file.writeAll(buffer[0..bytes_read]);
+    }
 }

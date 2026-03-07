@@ -175,6 +175,13 @@ pub fn formatPath(allocator: std.mem.Allocator, info: DependencyFormatInfo) ![]c
     return try list.toOwnedSlice(allocator);
 }
 
+pub fn formatMavenUrl(allocator: std.mem.Allocator, info: DependencyFormatInfo) ![]const u8 {
+    if (info.isLocal()) return error.LocalPathCannotBeMavenUrl;
+    const path = try formatPath(allocator, info);
+    defer allocator.free(path);
+    return try std.fmt.allocPrint(allocator, "https://repo1.maven.org/maven2/{s}", .{path});
+}
+
 test "format converter test" {
     const testing = std.testing;
     const allocator = testing.allocator;
