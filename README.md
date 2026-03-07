@@ -1,5 +1,9 @@
 # maven-get-deps
 
+TODO: look into integration with https://github.com/mthmulders/mcs as a PR, or check if it can produce same things.
+
+
+
 A standalone tool to resolve and download Maven dependencies to a specific local folder, and also genrate classpath file for scripting. Uses the same structure as any maven repository(even your local maven repository has the same structure).
 
 
@@ -22,32 +26,38 @@ The idea is to:
 - use this tool to generate a list of dependencies in a file that you deploy along with your jar
 - use the file to start the applications by a simple script without needing to install or copy those dependencies to application folder
 
-This makes for leaner releases and faster deployments. How exactly you combi this is up to you.
+This makes for leaner releases and faster deployments. How exactly you combine this is up to you.
 
 If you have multiple versions of your java binaries available for instances to use, the shared local repository will have the combination of all of the dependencies, but the classpath file in each distributed binary version will help you cherry pick for classpath only those you need. Later you can use the classpath files to clean the shared repo after you remove a version.
+
+You can also rely on `--classpath` mode available in both tools to directly output an OS-friendly formatted `CLASSPATH` string ready to be injected into an environment variable.
 
 Here is an example script in bash:
 ```sh
 LIB_ROOT="/opt/shared/lib"
 DEPS_FILE="dependencies.txt"
-CP="app.jar"
-while IFS= read -r line; do
-  CP="$CP:$LIB_ROOT/$line"
-done < "$DEPS_FILE"
 
-export CLASSPATH="$CP"; java com.example.Main
+# Assuming dependencies.txt contains the standard relative paths format:
+CP_STRING=$(java -jar maven-get-deps-cli.jar --input "$DEPS_FILE" --convert-format path --classpath --cache "$LIB_ROOT")
+# Or using the zig version:
+# CP_STRING=$(maven_get_deps -i "$DEPS_FILE" -cf path --classpath --cache "$LIB_ROOT")
+
+export CLASSPATH="app.jar:$CP_STRING"
+java com.example.Main
 ```
 
 Here is an example script in PowerShell:
-```sh
+```powershell
 $LIB_ROOT = "C:\opt\shared\lib"
 $DEPS_FILE = "dependencies.txt"
-$CP = "app.jar"
-Get-Content $DEPS_FILE | ForEach-Object {
-  $CP += ";$LIB_ROOT/$_"
-}
 
-$env:CLASSPATH = $CP ; java com.example.Main
+# Using Java executable
+$CP_STRING = java -jar maven-get-deps-cli.jar --input $DEPS_FILE --convert-format path --classpath --cache $LIB_ROOT
+# Or using the Zig executable:
+# $CP_STRING = maven_get_deps -i $DEPS_FILE -cf path --classpath --cache $LIB_ROOT
+
+$env:CLASSPATH = "app.jar;" + $CP_STRING
+java com.example.Main
 ```
 
 >Notice, I have just learned while doing this project (something I should have know ages ago) that java will look if CLASSPATH variable is set and use it. This removes noise of the huge classpath from process view when using `ps`, and may have some other benefits.
@@ -78,7 +88,8 @@ Run the tool binary for linux/windows or using `java -jar target/maven-get-deps-
 - `-n, --no-copy`: (Optional) Disable copying. Even if `dest-dir` is provided, files will not be copied (only path relativization will use it).
 - `-c, --cache <arg>`: (default  `~/.m2/repository`) Local repository to use as a **source**.
 - `-s, --scopes <arg>`: (Optional, default: `compile,runtime`) Comma-separated list of scopes to include.
-- `--report` - (Optional) Path to a file to generate a detailed Markdown report of dependency sizes
+- `--report`: (Optional) Path to a file to generate a detailed Markdown report of dependency sizes
+- `-cp, --classpath`: (Optional) Formats the output array as a single OS-separated CLASSPATH string instead of listing each element on a new line. Handles File path separators properly.
 
 #### Example
 

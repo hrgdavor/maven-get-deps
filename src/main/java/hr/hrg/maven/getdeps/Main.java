@@ -13,6 +13,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import hr.hrg.maven.getdeps.FormatConverter;
+import hr.hrg.maven.getdeps.DependencyFormatInfo;
 
 public class Main {
 
@@ -57,6 +59,16 @@ public class Main {
                 "Comma-separated list of scopes to include (default: compile,runtime)"));
         options.addOption(new Option("n", "no-copy", false, "Disable copying to dest-dir (even if provided)"));
 
+        Option inputOpt = new Option("i", "input", true, "Input text file with list of dependencies to convert");
+        options.addOption(inputOpt);
+
+        Option convertOpt = new Option("cf", "convert-format", true,
+                "Convert format (colon|path). Requires -i/--input");
+        options.addOption(convertOpt);
+
+        options.addOption(new Option("cp", "classpath", false,
+                "Output as a valid CLASSPATH string joined by the OS-specific path separator"));
+
         CommandLineParser parser = new DefaultParser();
         HelpFormatter formatter = new HelpFormatter();
 
@@ -68,15 +80,25 @@ public class Main {
                 return;
             }
 
-            String destDir = cmd.getOptionValue("dest-dir");
-            String pomPath = cmd.getOptionValue("pom", "pom.xml");
+            String inputPath = cmd.getOptionValue("input");
+            String convertFormat = cmd.getOptionValue("convert-format");
             String outputPath = cmd.getOptionValue("output");
-            String reportPath = cmd.getOptionValue("report");
             String cachePath = cmd.getOptionValue("cache");
+
             String scopesStr = cmd.getOptionValue("scopes", "compile,runtime");
             boolean copyJars = !cmd.hasOption("no-copy");
+            boolean classpathMode = cmd.hasOption("classpath");
 
-            run(destDir, pomPath, outputPath, reportPath, cachePath, scopesStr, copyJars);
+            if (inputPath != null && convertFormat != null) {
+                runConvert(inputPath, outputPath, convertFormat, classpathMode, cachePath);
+                return;
+            }
+
+            String destDir = cmd.getOptionValue("dest-dir");
+            String pomPath = cmd.getOptionValue("pom", "pom.xml");
+            String reportPath = cmd.getOptionValue("report");
+
+            run(destDir, pomPath, outputPath, reportPath, cachePath, scopesStr, copyJars, classpathMode);
 
         } catch (ParseException e) {
             System.out.println(e.getMessage());
@@ -89,7 +111,7 @@ public class Main {
     }
 
     private static void run(String destDir, String pomPath, String outputPath, String reportPath, String cachePath,
-            String scopesStr, boolean copyJars) throws Exception {
+            String scopesStr, boolean copyJars, boolean classpathMode) throws Exception {
         File pomFile = new File(pomPath);
         if (!pomFile.exists()) {
             throw new IllegalArgumentException("POM file not found: " + pomPath);
@@ -147,14 +169,26 @@ public class Main {
 
         if (outputPath != null) {
             try (PrintWriter writer = new PrintWriter(new File(outputPath))) {
-                for (String path : result.relativePaths) {
-                    writer.println(path);
+                if (classpathMode) {
+                    writer.println(result.relativePaths.stream()
+                            .map(p -> new File(sourceRepoPath, p).getAbsolutePath())
+                            .collect(Collectors.joining(File.pathSeparator)));
+                } else {
+                    for (String path : result.relativePaths) {
+                        writer.println(path);
+                    }
                 }
             }
             System.out.println("Output written to: " + outputPath);
         } else {
-            for (String path : result.relativePaths) {
-                System.out.println(path);
+            if (classpathMode) {
+                System.out.println(result.relativePaths.stream()
+                        .map(p -> new File(sourceRepoPath, p).getAbsolutePath())
+                        .collect(Collectors.joining(File.pathSeparator)));
+            } else {
+                for (String path : result.relativePaths) {
+                    System.out.println(path);
+                }
             }
         }
 
@@ -182,5 +216,63 @@ public class Main {
             }
         }
         return value;
+    }
+
+    private static void runConvert(String inputPath, String outputPath, String convertFormat, boolean classpathMode,
+            String cachePath) throws Exception {
+        boolean toColon = "colon".equalsIgnoreCase(convertFormat);
+        boolean toPath = "path".equalsIgnoreCase(convertFormat);
+
+        if (!toColon && !toPath) {
+            throw new IllegalArgumentException("Invalid convert option. Must be 'colon' or 'path'.");
+        }
+
+        java.util.List<String> lines = java.nio.file.Files.readAllLines(new File(inputPath).toPath());
+        java.util.List<String> collectedPaths = new java.util.ArrayList<>();
+
+        String defaultM2 = System.getProperty("user.home") + "/.m2/repository";
+        String sourceRepoPath = (cachePath != null) ? cachePath : defaultM2;
+
+        PrintWriter writer = null;
+        if (outputPath != null) {
+            writer = new PrintWriter(new File(outputPath));
+        }
+
+        for (String line : lines) {
+            if (line.trim().isEmpty())
+                continue;
+            DependencyFormatInfo info = FormatConverter.parse(line);
+            if (info == null)
+                continue;
+
+            String outLine = toColon ? FormatConverter.formatColon(info) : FormatConverter.formatPath(info);
+
+            if (classpathMode) {
+                if (toPath && !info.isLocal()) {
+                    outLine = new File(sourceRepoPath, outLine).getAbsolutePath();
+                }
+                collectedPaths.add(outLine);
+            } else {
+                if (writer != null) {
+                    writer.println(outLine);
+                } else {
+                    System.out.println(outLine);
+                }
+            }
+        }
+
+        if (classpathMode) {
+            String combined = String.join(File.pathSeparator, collectedPaths);
+            if (writer != null) {
+                writer.println(combined);
+            } else {
+                System.out.println(combined);
+            }
+        }
+
+        if (writer != null) {
+            writer.close();
+            System.out.println("Output written to: " + outputPath);
+        }
     }
 }
