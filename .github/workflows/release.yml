@@ -44,9 +44,50 @@ jobs:
           name: artifacts-${{ matrix.os }}
           path: release-artifacts/*
 
+  build-zig:
+    name: Build Zig tool (cross-compile all targets)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: '0.15.2'
+
+      - name: Build Zig (Windows x64)
+        run: zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-windows
+
+      - name: Package Zig Windows x64
+        run: |
+          mkdir -p release-artifacts
+          cd zig-out/bin
+          zip ../../release-artifacts/maven-get-deps-zig-windows-x64.zip maven_get_deps.exe
+
+      - name: Build Zig (Linux x64)
+        run: zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux
+
+      - name: Package Zig Linux x64
+        run: |
+          tar -czf release-artifacts/maven-get-deps-zig-linux-x64.tar.gz -C zig-out/bin maven_get_deps
+
+      - name: Build Zig (Linux ARM64)
+        run: zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-linux
+
+      - name: Package Zig Linux ARM64
+        run: |
+          tar -czf release-artifacts/maven-get-deps-zig-linux-arm64.tar.gz -C zig-out/bin maven_get_deps
+
+      - name: Upload Zig Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-zig
+          path: release-artifacts/*
+
   release:
     name: Create Release
-    needs: build
+    needs: [build, build-zig]
     runs-on: ubuntu-latest
     permissions:
       contents: write
