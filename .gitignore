@@ -7,3 +7,4 @@ report-aligned.md
 test-temp-m2
 .zig-cache
 zig-out/bin
+.vscode

@@ -52,11 +52,22 @@ public class GetDepsMojo extends AbstractMojo {
     @Parameter(property = "copyJars", defaultValue = "false")
     private boolean copyJars;
 
+    @Parameter(property = "classpath", defaultValue = "false")
+    private boolean classpath;
+
+    @Parameter(property = "cache")
+    private String cache;
+
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
         try {
             boolean performCopy = copyJars && destDir != null;
-            File sourceRepoBase = repoSession.getLocalRepository().getBasedir();
+            File defaultM2 = new File(System.getProperty("user.home"), ".m2/repository");
+            File sourceRepoBase = (cache != null) ? new File(cache)
+                    : (repoSession.getLocalRepository() != null && repoSession.getLocalRepository().getBasedir() != null
+                            ? repoSession.getLocalRepository().getBasedir()
+                            : defaultM2);
+            String sourceRepoPath = sourceRepoBase.getAbsolutePath();
 
             if (performCopy && !destDir.exists()) {
                 destDir.mkdirs();
@@ -96,11 +107,27 @@ public class GetDepsMojo extends AbstractMojo {
 
             if (outputFile != null) {
                 try (PrintWriter writer = new PrintWriter(outputFile)) {
-                    for (String path : result.relativePaths) {
-                        writer.println(path);
+                    if (classpath) {
+                        writer.println(result.relativePaths.stream()
+                                .map(p -> new File(sourceRepoPath, p).getAbsolutePath())
+                                .collect(Collectors.joining(File.pathSeparator)));
+                    } else {
+                        for (String path : result.relativePaths) {
+                            writer.println(path);
+                        }
                     }
                 }
                 getLog().info("Output written to: " + outputFile.getAbsolutePath());
+            } else {
+                if (classpath) {
+                    getLog().info(result.relativePaths.stream()
+                            .map(p -> new File(sourceRepoPath, p).getAbsolutePath())
+                            .collect(Collectors.joining(File.pathSeparator)));
+                } else {
+                    for (String path : result.relativePaths) {
+                        getLog().info(path);
+                    }
+                }
             }
 
             if (reportFile != null) {

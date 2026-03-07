@@ -15,6 +15,8 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import hr.hrg.maven.getdeps.FormatConverter;
 import hr.hrg.maven.getdeps.DependencyFormatInfo;
+import java.util.Map;
+import java.util.HashMap;
 
 public class Main {
 
@@ -32,6 +34,11 @@ public class Main {
             // ignore
         }
         VERSION = version;
+
+        // Silence OWASP console output by default
+        if (System.getProperty("org.slf4j.simpleLogger.log.org.owasp") == null) {
+            System.setProperty("org.slf4j.simpleLogger.log.org.owasp", "warn");
+        }
     }
 
     public static void main(String[] args) {
@@ -69,6 +76,15 @@ public class Main {
         options.addOption(new Option("cp", "classpath", false,
                 "Output as a valid CLASSPATH string joined by the OS-specific path separator"));
 
+        options.addOption(new Option("cr", "cve-report", true,
+                "CVE report output file (queries local OWASP H2 database, default path used if --cve-data omitted)"));
+        options.addOption(new Option("cd", "cve-data", true,
+                "Path to the OWASP Dependency-Check H2 database directory (default: ~/.m2/dependency-check-data)"));
+        options.addOption(new Option("cu", "cve-update", false,
+                "Download / update the OWASP CVE database into the --cve-data directory and exit"));
+        options.addOption(new Option("nk", "nvd-api-key", true,
+                "NVD API key for higher rate limits during --cve-update (see https://nvd.nist.gov/developers/request-an-api-key)"));
+
         CommandLineParser parser = new DefaultParser();
         HelpFormatter formatter = new HelpFormatter();
 
@@ -95,10 +111,48 @@ public class Main {
             }
 
             String destDir = cmd.getOptionValue("dest-dir");
-            String pomPath = cmd.getOptionValue("pom", "pom.xml");
             String reportPath = cmd.getOptionValue("report");
+            String cveReportPath = cmd.getOptionValue("cve-report");
 
-            run(destDir, pomPath, outputPath, reportPath, cachePath, scopesStr, copyJars, classpathMode);
+            String defaultCveData = System.getProperty("user.home") + "/.m2/dependency-check-data";
+            String cveDataDir = cmd.hasOption("cve-data") ? cmd.getOptionValue("cve-data") : defaultCveData;
+
+            String pomPath = cmd.getOptionValue("pom", "pom.xml");
+            File pomFile = new File(pomPath);
+            DependencyResolverService service = new DependencyResolverService();
+
+            if (cmd.hasOption("cve-update")) {
+                String nvdApiKey = cmd.getOptionValue("nvd-api-key");
+                CveReportService.updateDatabase(cveDataDir, nvdApiKey);
+                return;
+            }
+
+            if (cveReportPath != null) {
+                // Generate CVE report
+                Map<String, List<String>> deps;
+                if (inputPath != null) {
+                    System.out.println("[CVE] Reading dependencies from: " + inputPath);
+                    deps = DependencyResolverService.readPerDepFromFile(inputPath);
+                } else {
+                    System.out.println("[CVE] Resolving dependencies from: " + pomPath);
+                    deps = service.resolvePerDep(pomFile, scopesStr, cachePath);
+                }
+
+                String report = CveReportService.scan(cveDataDir, deps).formatMarkdownReport();
+                java.nio.file.Files.writeString(java.nio.file.Path.of(cveReportPath), report);
+                System.out.println("CVE report written to: " + cveReportPath);
+
+                // If we ONLY wanted a CVE report, exit now.
+                // We check if other output options are missing.
+                boolean hasOtherOutputs = outputPath != null || reportPath != null
+                        || (cmd.hasOption("dest-dir") && !cmd.hasOption("no-copy"));
+                if (!hasOtherOutputs) {
+                    return;
+                }
+            }
+
+            run(destDir, pomPath, outputPath, reportPath, cachePath, scopesStr, copyJars, classpathMode,
+                    cveReportPath, cveDataDir);
 
         } catch (ParseException e) {
             System.out.println(e.getMessage());
@@ -111,7 +165,10 @@ public class Main {
     }
 
     private static void run(String destDir, String pomPath, String outputPath, String reportPath, String cachePath,
-            String scopesStr, boolean copyJars, boolean classpathMode) throws Exception {
+            String scopesStr, boolean copyJars, boolean classpathMode,
+            String cveReportPath, String cveDataDir) throws Exception {
+
+        // Size report logic remains as is (still uses pomPath)
         File pomFile = new File(pomPath);
         if (!pomFile.exists()) {
             throw new IllegalArgumentException("POM file not found: " + pomPath);
@@ -199,12 +256,25 @@ public class Main {
             try (PrintWriter writer = new PrintWriter(new File(reportPath))) {
                 writer.print(report.formatMarkdownTable());
             }
-            if (outputPath != null)
-                System.out.println("Report written to: " + reportPath);
+            System.out.println("Size report written to: " + reportPath);
         }
 
-        if (outputPath != null)
-            System.out.println("Total size: " + result.totalSize + " bytes");
+        if (cveReportPath != null) {
+            if (cveDataDir == null) {
+                System.err.println("[CVE] --cve-data is required when using --cve-report");
+            } else {
+                java.util.LinkedHashMap<String, List<String>> perDep = DependencyResolverService.resolvePerDep(
+                        system, session, repos, model.getDependencies(),
+                        Main::resolveProperty, model, scopes);
+                CveReportService.CveReportResult cveResult = CveReportService.scan(cveDataDir, perDep);
+                try (PrintWriter writer = new PrintWriter(new File(cveReportPath))) {
+                    writer.print(cveResult.formatMarkdownReport());
+                }
+                System.out.println("CVE report written to: " + cveReportPath);
+            }
+        }
+
+        System.out.println("Total size: " + result.totalSize + " bytes");
     }
 
     private static String resolveProperty(String value, Model model) {

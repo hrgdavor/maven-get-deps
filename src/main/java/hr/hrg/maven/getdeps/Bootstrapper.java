@@ -116,6 +116,31 @@ public class Bootstrapper {
         }
     }
 
+    public static String resolveProperty(String value, org.apache.maven.model.Model model) {
+        if (value == null || !value.contains("${"))
+            return value;
+        if ("${project.version}".equals(value) || "${version}".equals(value))
+            return model.getVersion();
+        if ("${project.groupId}".equals(value) || "${groupId}".equals(value))
+            return model.getGroupId();
+        if ("${project.artifactId}".equals(value) || "${artifactId}".equals(value))
+            return model.getArtifactId();
+
+        // Simple property lookup
+        if (value.startsWith("${") && value.endsWith("}")) {
+            String propName = value.substring(2, value.length() - 1);
+            String propValue = model.getProperties().getProperty(propName);
+            if (propValue != null)
+                return propValue;
+        }
+
+        return value;
+    }
+
+    public static List<RemoteRepository> newRepositories(RepositorySystem system, RepositorySystemSession session) {
+        return newRepositories(system, session, null);
+    }
+
     public static List<RemoteRepository> newRepositories(RepositorySystem system, RepositorySystemSession session,
             String cachePath) {
         List<RemoteRepository> repose = new ArrayList<>();

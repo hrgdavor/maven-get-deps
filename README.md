@@ -2,8 +2,6 @@
 
 TODO: look into integration with https://github.com/mthmulders/mcs as a PR, or check if it can produce same things.
 
-
-
 A standalone tool to resolve and download Maven dependencies to a specific local folder, and also genrate classpath file for scripting. Uses the same structure as any maven repository(even your local maven repository has the same structure).
 
 
@@ -134,7 +132,7 @@ This is how it looks like for this project (at the time of writing):
 
 # Maven Plugin Usage
 
-Once installed to your local repository (via `mvn install`), you can run the tool as a Maven plugin goal:
+The plugin is deployed to Maven Central. You can add it to your `pom.xml` under `<build><plugins>` or run it directly from the command line once resolved.
 
 ```powershell
 mvn io.github.hrgdavor:maven-get-deps:1.0.0:get-deps [-DdestDir=<DEST_PATH>] [-DcopyJars=true] [-DoutputFile=<OUTPUT_FILE>]
@@ -146,16 +144,21 @@ mvn io.github.hrgdavor:maven-get-deps:1.0.0:get-deps [-DdestDir=<DEST_PATH>] [-D
 - `copyJars`: (Optional, default: `false`) Whether to copy dependencies from your local Maven repo to `destDir`. (Only works if `destDir` is provided).
 - `outputFile`: (Optional) Save the list to a file.
 - `scopes`: (Optional, default: `compile,runtime`) Scopes to include.
-- `reportFile` : (Optional) Path to a file to generate a detailed Markdown report of dependency sizes
+- `reportFile` : (Optional) Path to a file to generate a detailed Markdown report of dependency sizes.
+- `classpath` : (Optional, default: `false`) Outputs dependencies as a single OS-separated string suitable for the `CLASSPATH` environment variable.
+- `cache` : (Optional) Path to your local maven repository. Used as the prefix root for paths when `classpath` is true, otherwise uses `~/.m2/repository`.
 
 ### Example
 
 ```powershell
 # Default: List all runtime dependencies relative to your .m2
-mvn io.github.hrgdavor:maven-get-deps:get-deps
+mvn io.github.hrgdavor:maven-get-deps:1.0.0:get-deps
+
+# Convert dependency output into a CLASSPATH string:
+mvn io.github.hrgdavor:maven-get-deps:1.0.0:get-deps -Dclasspath=true
 
 # Copy runtime dependencies to a standalone folder
-mvn io.github.hrgdavor:maven-get-deps:get-deps -DdestDir=target/copy -DcopyJars=true
+mvn io.github.hrgdavor:maven-get-deps:1.0.0:get-deps -DdestDir=target/copy -DcopyJars=true
 ```
 
 
@@ -167,15 +170,107 @@ mvn io.github.hrgdavor:maven-get-deps:get-deps -DdestDir=target/copy -DcopyJars=
   - If `copyJars` is enabled, artifacts are copied **from** the Source **to** this Destination.
 - tool calculates relative paths. The relative path results are **interchangeable** (e.g., `org/apache/maven/...`) as the destination directory follows the standard Maven layout.
 
+## OWASP Fast Dependency Check
 
+For projects that strictly use Maven Central and do not bring in random external JARs, you can use `maven-get-deps` to populate a shared local repository and configure the OWASP Dependency-Check plugin to run significantly faster. By disabling JAR analysis and relying strictly on Maven's dependency graph, the scan time is drastically reduced.
+
+Here is an example configuration for using OWASP:
+
+```xml
+<configuration>
+    <autoUpdate>false</autoUpdate>
+    <dataDirectory>/path/to/shared/h2</dataDirectory>
+    
+    <!-- This stops it from opening JARs -->
+    <archiveAnalyzerEnabled>false</archiveAnalyzerEnabled>
+    <jarAnalyzerEnabled>false</jarAnalyzerEnabled>
+    
+    <!-- This relies strictly on Maven's dependency graph (Fast) -->
+    <centralAnalyzerEnabled>true</centralAnalyzerEnabled> 
+</configuration>
+```
+
+## CVE Report (CLI — `executable` profile only)
+
+The Java CLI (built with `-Pexecutable`) downloads a local OWASP H2 CVE database and queries it
+for known vulnerabilities — no network access is performed during the actual scan.
+
+The H2 database is stored in `~/.m2/dependency-check-data` by default and can be pointed elsewhere with
+`--cve-data`.
+
+### Step 1: Populate / update the local CVE database
+
+```powershell
+# First run (or regular refresh) — downloads 330K+ NVD CVE records
+java -jar maven-get-deps-1.0.0-cli.jar --cve-update
+
+# With an NVD API key (highly recommended — avoids rate-limiting, 10× faster)
+java -jar maven-get-deps-1.0.0-cli.jar --cve-update --nvd-api-key <YOUR_KEY>
+
+# Custom database location
+java -jar maven-get-deps-1.0.0-cli.jar --cve-update --cve-data /shared/cve-db
+```
+
+> **Get a free NVD API key** at [nvd.nist.gov/developers/request-an-api-key](https://nvd.nist.gov/developers/request-an-api-key).
+> Without a key, downloads still work but are rate-limited and much slower.
+>
+> Schedule `--cve-update` as a cron job / Task Scheduler entry to keep data current:
+> ```
+> # Linux/macOS cron (daily at 03:00)
+> 0 3 * * * java -jar /opt/maven-get-deps-cli.jar --cve-update --nvd-api-key $NVD_KEY
+> ```
+
+### Step 2: Generate the CVE report
+
+```powershell
+# From a pom.xml (default --cve-data location used automatically)
+java -jar maven-get-deps-1.0.0-cli.jar --pom pom.xml --cve-report cve-report.md
+
+# From a dependency list file
+java -jar maven-get-deps-1.0.0-cli.jar --input deps.txt --cve-report cve-report.md
+
+# Custom database location
+java -jar maven-get-deps-1.0.0-cli.jar --pom pom.xml --cve-report cve-report.md `
+    --cve-data /shared/cve-db
+```
+
+### Report format
+
+The report is a two-section markdown file:
+
+**Section 1 — Summary table** (one row per direct dependency):
+```
+| Direct Dependency | Status | Transitive Issues |
+|---|:---:|:---:|
+| `org.example:foo:1.0` | ✅ CLEAN | — |
+| `log4j:log4j:1.2.17` | ⚠ CVE | 0 with CVEs |
+```
+
+**Section 2 — Detailed sections** (one `###` block per direct dependency showing all transitives):
+```
+### log4j:log4j:1.2.17
+
+| Artifact | Version | CVEs |
+|---|---|---|
+| `log4j:log4j` | 1.2.17 | CVE-2019-17571, CVE-2022-23302 |
+```
 
 # Build
 
 To build the project, ensure you have Java 17+ and Maven installed.
 
+The project is structured with two profiles:
+1. The **Maven Plugin (Mojo)**: Built by default to keep the deployable artifact thin.
+2. The **CLI Executable**: Built via the `executable` profile, including CLI parsing logic and outputting a fat JAR.
+
 ```powershell
 $env:JAVA_HOME = "C:\Program Files\Java\jdk-17"
-mvn clean package -DskipTests
+
+# Build the Maven plugin (default profile)
+mvn clean install -DskipTests
+
+# Build the CLI executable JAR
+mvn clean package -Pexecutable -DskipTests
 ```
 
 # GraalVM Native Image Build
@@ -184,7 +279,7 @@ On windows difference to run the tool on pom.xml of this project is significant 
 - 300ms -  `Measure-Command { java -jar .\target\maven-get-deps-1.0.0-cli.jar}`
 - 60ms - `Measure-Command { .\target\maven-get-deps.exe | Out-Default }`
 
-You can build a standalone native executable for the CLI using GraalVM.
+You can build a standalone native executable for the CLI using GraalVM. Note that this requires both `executable` and `native` profiles.
 
 #### Prerequisites (Windows)
 1.  **GraalVM JDK**: You have it installed at `C:\Program Files\Java\graalvm-jdk-25+37.1`.
@@ -205,7 +300,7 @@ You can build a standalone native executable for the CLI using GraalVM.
     ```
 2.  Build the native image:
     ```powershell
-    mvn clean package -Pnative -DskipTests
+    mvn clean package -Pexecutable,native -DskipTests
     ```
     The resulting binary will be located at `target/maven-get-deps.exe`.
 

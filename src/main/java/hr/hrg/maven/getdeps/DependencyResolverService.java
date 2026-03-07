@@ -211,4 +211,103 @@ public class DependencyResolverService {
 
         return new ReportResult(entries, totalSize);
     }
+
+    /**
+     * Resolves each direct dependency individually and returns, for each, the
+     * ordered list of all artifacts in its transitive closure (including itself)
+     * as {@code "groupId:artifactId:version"} strings.
+     *
+     * <p>
+     * This data structure is used by {@code CveReportService} to map each
+     * direct dependency to its full dependency tree for CVE reporting.
+     * </p>
+     */
+    public java.util.LinkedHashMap<String, List<String>> resolvePerDep(File pomFile, String scopesStr, String cachePath)
+            throws Exception {
+        RepositorySystem system = Bootstrapper.newRepositorySystem();
+        String defaultM2 = System.getProperty("user.home") + "/.m2/repository";
+        String repoPath = (cachePath != null) ? cachePath : defaultM2;
+        RepositorySystemSession session = Bootstrapper.newRepositorySystemSession(system, repoPath);
+        List<org.eclipse.aether.repository.RemoteRepository> repos = Bootstrapper.newRepositories(system, session);
+        org.apache.maven.model.Model model = Bootstrapper.resolveModel(pomFile, system, session, repos);
+
+        Set<String> scopes = java.util.stream.Stream.of(scopesStr.split(","))
+                .map(String::trim)
+                .collect(java.util.stream.Collectors.toSet());
+
+        return resolvePerDep(system, session, repos, model.getDependencies(),
+                (v, m) -> Bootstrapper.resolveProperty(v, m), model, scopes);
+    }
+
+    public static java.util.LinkedHashMap<String, List<String>> resolvePerDep(
+            RepositorySystem system,
+            RepositorySystemSession session,
+            List<RemoteRepository> repos,
+            List<org.apache.maven.model.Dependency> dependencies,
+            java.util.function.BiFunction<String, org.apache.maven.model.Model, String> propertyResolver,
+            org.apache.maven.model.Model model,
+            Set<String> scopes) throws Exception {
+
+        java.util.LinkedHashMap<String, List<String>> result = new java.util.LinkedHashMap<>();
+
+        for (org.apache.maven.model.Dependency dep : dependencies) {
+            String scope = dep.getScope();
+            if (scope == null)
+                scope = JavaScopes.COMPILE;
+            if (!scopes.contains(scope))
+                continue;
+
+            String version = propertyResolver.apply(dep.getVersion(), model);
+            String groupId = propertyResolver.apply(dep.getGroupId(), model);
+            String artifactId = propertyResolver.apply(dep.getArtifactId(), model);
+            String directKey = groupId + ":" + artifactId + ":" + version;
+
+            CollectRequest collectRequest = new CollectRequest();
+            collectRequest.addDependency(new Dependency(
+                    new DefaultArtifact(groupId, artifactId, dep.getClassifier(), dep.getType(), version),
+                    scope));
+            collectRequest.setRepositories(repos);
+
+            DependencyRequest dependencyRequest = new DependencyRequest(collectRequest,
+                    DependencyFilterUtils.classpathFilter(scopes.toArray(new String[0])));
+
+            DependencyResult depResult = system.resolveDependencies(session, dependencyRequest);
+
+            List<String> coords = new ArrayList<>();
+            for (ArtifactResult artifactResult : depResult.getArtifactResults()) {
+                Artifact artifact = artifactResult.getArtifact();
+                coords.add(artifact.getGroupId() + ":" + artifact.getArtifactId() + ":" + artifact.getVersion());
+            }
+            result.put(directKey, coords);
+        }
+        return result;
+    }
+
+    /**
+     * Reads a list of G:A:V coordinates from a file (one per line) and
+     * returns a map where each is its own "direct" dependency.
+     */
+    public static java.util.LinkedHashMap<String, List<String>> readPerDepFromFile(String path)
+            throws java.io.IOException {
+        java.util.LinkedHashMap<String, List<String>> result = new java.util.LinkedHashMap<>();
+        List<String> lines = java.nio.file.Files.readAllLines(java.nio.file.Path.of(path));
+        for (String line : lines) {
+            line = line.trim();
+            if (line.isEmpty() || line.startsWith("#"))
+                continue;
+            // Handle both flat GAV lists and potential G:A:V|T1,T2 format
+            String[] parts = line.split("\\|");
+            String direct = parts[0].trim();
+            List<String> closure = new java.util.ArrayList<>();
+            closure.add(direct);
+            if (parts.length > 1) {
+                for (String t : parts[1].split(",")) {
+                    if (!t.trim().isEmpty())
+                        closure.add(t.trim());
+                }
+            }
+            result.put(direct, closure);
+        }
+        return result;
+    }
 }
