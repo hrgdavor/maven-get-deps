@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>io.github.hrgdavor</groupId>
+    <groupId>hr.hrg</groupId>
     <artifactId>maven-get-deps</artifactId>
     <version>1.0.0</version>
     <packaging>maven-plugin</packaging>
@@ -352,6 +352,55 @@
                                 <enabled>true</enabled>
                             </metadataRepository>
                         </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        <profile>
+            <id>publish</id>
+            <!-- Enables javadoc JAR generation required by Maven Central.
+                 Adds the executable-profile deps as 'provided' so javadoc can resolve
+                 all types (CveReportService imports OWASP classes that aren't in the
+                 default mojo classpath). doclint=none ensures no minor issues break the build. -->
+            <dependencies>
+                <dependency>
+                    <groupId>org.owasp</groupId>
+                    <artifactId>dependency-check-core</artifactId>
+                    <version>12.2.0</version>
+                    <scope>provided</scope>
+                </dependency>
+                <dependency>
+                    <groupId>com.h2database</groupId>
+                    <artifactId>h2</artifactId>
+                    <version>2.2.224</version>
+                    <scope>provided</scope>
+                </dependency>
+                <dependency>
+                    <groupId>com.fasterxml.jackson.core</groupId>
+                    <artifactId>jackson-databind</artifactId>
+                    <version>2.15.2</version>
+                    <scope>provided</scope>
+                </dependency>
+            </dependencies>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-javadoc-plugin</artifactId>
+                        <version>3.6.3</version>
+                        <configuration>
+                            <skip>false</skip>
+                            <doclint>none</doclint>
+                            <failOnError>false</failOnError>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>attach-javadocs</id>
+                                <goals>
+                                    <goal>jar</goal>
+                                </goals>
+                            </execution>
+                        </executions>
                     </plugin>
                 </plugins>
             </build>
