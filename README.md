@@ -60,7 +60,7 @@ To automate downloading the latest release, query the GitHub API:
 ### Maven Plugin (Resolve & List Dependencies)
 
 ```bash
-mvn io.github.hrgdavor:maven-get-deps:1.0.0:get-deps [-DdestDir=<PATH>] [-DcopyJars=true] [-DoutputFile=deps.txt]
+mvn hr.hrg:maven-get-deps:1.0.0:get-deps [-DdestDir=<PATH>] [-DcopyJars=true] [-DoutputFile=deps.txt]
 ```
 
 ### CLI (Generate Classpath)

@@ -108,7 +108,7 @@ To prevent overwriting manually tuned metadata (like specific reflection entries
 3.  **Merge the Metadata**: Use the internal merger utility to combine the results:
     ```powershell
     # Run the merger using the CLI jar (GraalVM Java 21+ required for execution)
-    $OLD_META = "src/main/resources/META-INF/native-image/io.github.hrgdavor/maven-get-deps/reachability-metadata.json"
+    $OLD_META = "src/main/resources/META-INF/native-image/hr.hrg/maven-get-deps/reachability-metadata.json"
     $NEW_META = "agent-output/reachability-metadata.json"
     
     java -cp target/maven-get-deps-1.0.0-cli.jar hr.hrg.maven.getdeps.MetadataMerger `

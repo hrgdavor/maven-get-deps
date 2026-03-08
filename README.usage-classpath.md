@@ -25,7 +25,7 @@ This is the primary deployment pattern. Your app ships with a pre-generated `dep
 
 ```bash
 # Generate the file during build
-mvn io.github.hrgdavor:maven-get-deps:get-deps -DoutputFile=dependencies.txt
+mvn hr.hrg:maven-get-deps:get-deps -DoutputFile=dependencies.txt
 
 # Assemble CLASSPATH at startup (using Zig binary for speed)
 CP=$(maven_get_deps -i dependencies.txt -cf path --classpath --cache /opt/shared/lib)
@@ -89,10 +89,10 @@ java -jar maven-get-deps-cli.jar --input deps-path.txt --convert-format colon
 
 ```bash
 # Output classpath to stdout
-mvn io.github.hrgdavor:maven-get-deps:get-deps -Dclasspath=true
+mvn hr.hrg:maven-get-deps:get-deps -Dclasspath=true
 
 # Save classpath to a file
-mvn io.github.hrgdavor:maven-get-deps:get-deps -Dclasspath=true -DoutputFile=cp.txt
+mvn hr.hrg:maven-get-deps:get-deps -Dclasspath=true -DoutputFile=cp.txt
 ```
 
 ## Using the High-Performance Zig Binary

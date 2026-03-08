@@ -32,7 +32,7 @@ The usual options are:
 
 Using the Maven plugin:
 ```bash
-mvn io.github.hrgdavor:maven-get-deps:get-deps -DoutputFile=target/dependencies.txt
+mvn hr.hrg:maven-get-deps:get-deps -DoutputFile=target/dependencies.txt
 ```
 
 Or using the CLI:
