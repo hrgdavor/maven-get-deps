@@ -19,8 +19,6 @@ The smarter approach is to separate your **application code** from its **depende
 
 This gives you **lean, fast releases**: a 500 KB JAR deploys in milliseconds over the network. Dependencies only need to be synced when they actually change, not on every release. Multiple app versions on the same server share the same library files on disk.
 
-For a detailed guide on setting this up, see **[doc/README.usage-deploy.md](doc/README.usage-deploy.md)**.
-
 ## Deployment Philosophy
 
 While modern development often defaults to **Docker** and **Fat JARs**, the I believe that for many deployments, a shared dependency repository combined with thin application JARs is a more efficient and transparent model.
@@ -32,6 +30,7 @@ The **Java Virtual Machine (JVM)** is, by definition, a virtual machine. It prov
 - **Improved Observability**: Logs, heap dumps, and configuration files are directly accessible on the file system, simplifying backup paths and monitoring agents.
 - **Resource Efficiency**: You avoid the storage and bandwidth cost of pushing large image layers. A "Thin JAR" is often only a few hundred kilobytes, and dependencies are shared across all instances on the host.
 
+For a detailed guide on setting this up, see **[doc/README.usage-deploy.md](doc/README.usage-deploy.md)**.
 
 ## Download
 
