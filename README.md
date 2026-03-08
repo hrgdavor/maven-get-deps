@@ -2,8 +2,6 @@
 
 A standalone tool to resolve and download Maven dependencies to a local folder, and generate classpath files for scripting. Uses the standard Maven repository structure, making it compatible with your existing `~/.m2/repository`.
 
-> **Note**: Looking at integration with [mcs](https://github.com/mthmulders/mcs)? See the [development notes](README.dev.md).
-
 ## Why
 
 To deploy a Java app to a remote server you need your classes **and** all of your dependencies. Usually, this means copying dependencies to a `lib/` folder alongside your JAR, or even worse, creating fat JARs.
@@ -67,28 +65,30 @@ mvn hr.hrg:maven-get-deps:1.0.0:get-deps [-DdestDir=<PATH>] [-DcopyJars=true] [-
 ### CLI (Generate Classpath)
 
 ```bash
-# From pom.xml
-java -jar maven-get-deps-cli.jar --pom pom.xml --classpath
+# From pom.xml (default or explicit)
+java -jar maven-get-deps-cli.jar
+java -jar maven-get-deps-cli.jar pom.xml
+
+# From Maven coordinates (ad-hoc)
+java -jar maven-get-deps-cli.jar commons-lang:commons-lang:2.6
 
 # From a dependency list file
-java -jar maven-get-deps-cli.jar --input deps.txt --convert-format path --classpath
+java -jar maven-get-deps-cli.jar deps.txt --convert-format path --classpath
 ```
 
 ### CLI (CVE Scan)
 
 ```bash
 java -jar maven-get-deps-cli.jar --cve-update                     # First-time DB setup
-java -jar maven-get-deps-cli.jar --pom pom.xml --cve-report cve.md  # Scan
+java -jar maven-get-deps-cli.jar pom.xml --cve-report cve.md      # Scan pom
+java -jar maven-get-deps-cli.jar deps.txt --cve-report cve.md     # Scan deps list
 ```
 
 ---
 
 ## CLI Arguments
 
-| Flag | Description |
-|---|---|
-| `-p, --pom <file>` | Path to pom.xml (default: `pom.xml`) |
-| `-i, --input <file>` | Input dependency list file |
+| `[source]` | Positional argument: `pom.xml` OR Maven coordinates OR Input file. Default: `pom.xml` |
 | `-o, --output <file>` | Save output to file |
 | `-d, --dest-dir <dir>` | Destination directory for JAR copies |
 | `-n, --no-copy` | Disable JAR copying even if `--dest-dir` is set |
@@ -128,7 +128,9 @@ java -jar maven-get-deps-cli.jar --pom pom.xml --cve-report cve.md  # Scan
 ## Dependency Size Report
 
 ```bash
-java -jar maven-get-deps-cli.jar --pom pom.xml --report report.md
+java -jar maven-get-deps-cli.jar pom.xml --report report.md
+# Or for an ad-hoc artifact
+java -jar maven-get-deps-cli.jar commons-lang:commons-lang:2.6 --report report.md
 ```
 More details in [Dependency Size Reporting](README.usage-report.md) readme.
 
@@ -137,3 +139,6 @@ More details in [Dependency Size Reporting](README.usage-report.md) readme.
 ## Build & Development
 
 See [README.dev.md](README.dev.md) for build instructions, GraalVM native image generation, and metadata maintenance.
+
+> **Note**See [Comparison with mthmulders/mcs](README.mcs.md) for potential integration and functional overlaps.
+

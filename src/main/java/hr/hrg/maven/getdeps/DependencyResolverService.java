@@ -212,6 +212,39 @@ public class DependencyResolverService {
         return new ReportResult(entries, totalSize);
     }
 
+    public java.util.LinkedHashMap<String, List<String>> resolvePerDepForArtifact(String artifactCoords,
+            String scopesStr, String cachePath) throws Exception {
+        RepositorySystem system = Bootstrapper.newRepositorySystem();
+        String defaultM2 = System.getProperty("user.home") + "/.m2/repository";
+        String repoPath = (cachePath != null) ? cachePath : defaultM2;
+        RepositorySystemSession session = Bootstrapper.newRepositorySystemSession(system, repoPath);
+        List<org.eclipse.aether.repository.RemoteRepository> repos = Bootstrapper.newRepositories(system, session);
+
+        DependencyFormatInfo info = FormatConverter.parse(artifactCoords);
+        if (info == null || info.isLocal()) {
+            throw new IllegalArgumentException("Invalid artifact coordinates: " + artifactCoords);
+        }
+
+        org.apache.maven.model.Model model = new org.apache.maven.model.Model();
+        model.setGroupId("hr.hrg.maven.getdeps");
+        model.setArtifactId("adhoc");
+        model.setVersion("1.0.0");
+        org.apache.maven.model.Dependency dep = new org.apache.maven.model.Dependency();
+        dep.setGroupId(info.groupId());
+        dep.setArtifactId(info.artifactId());
+        dep.setVersion(info.version());
+        dep.setClassifier(info.classifier());
+        dep.setType(info.extension());
+        model.addDependency(dep);
+
+        Set<String> scopes = java.util.stream.Stream.of(scopesStr.split(","))
+                .map(String::trim)
+                .collect(java.util.stream.Collectors.toSet());
+
+        return resolvePerDep(system, session, repos, model.getDependencies(),
+                (v, m) -> Bootstrapper.resolveProperty(v, m), model, scopes);
+    }
+
     /**
      * Resolves each direct dependency individually and returns, for each, the
      * ordered list of all artifacts in its transitive closure (including itself)

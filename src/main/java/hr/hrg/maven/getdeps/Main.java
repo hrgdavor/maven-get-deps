@@ -54,9 +54,6 @@ public class Main {
                 "Destination directory for copies (relative paths in output will be relative to this)");
         options.addOption(destDirOpt);
 
-        Option pomOpt = new Option("p", "pom", true, "Path to the pom.xml file");
-        options.addOption(pomOpt);
-
         Option outputOpt = new Option("o", "output", true, "Output file path (optional)");
         options.addOption(outputOpt);
 
@@ -71,11 +68,8 @@ public class Main {
                 "Comma-separated list of scopes to include (default: compile,runtime)"));
         options.addOption(new Option("n", "no-copy", false, "Disable copying to dest-dir (even if provided)"));
 
-        Option inputOpt = new Option("i", "input", true, "Input text file with list of dependencies to convert");
-        options.addOption(inputOpt);
-
         Option convertOpt = new Option("cf", "convert-format", true,
-                "Convert format (colon|path). Requires -i/--input");
+                "Convert format (colon|path). Requires <source> to be a file");
         options.addOption(convertOpt);
 
         options.addOption(new Option("cp", "classpath", false,
@@ -108,7 +102,34 @@ public class Main {
                 return;
             }
 
-            String inputPath = cmd.getOptionValue("input");
+            String pomPath = null;
+            String artifactCoords = null;
+            String inputPath = null;
+
+            java.util.List<String> argList = cmd.getArgList();
+            if (!argList.isEmpty()) {
+                String arg = argList.get(0);
+                File file = new File(arg);
+                if (file.exists()) {
+                    if (arg.endsWith(".xml")) {
+                        pomPath = arg;
+                    } else {
+                        inputPath = arg;
+                    }
+                } else if (arg.endsWith(".xml")) {
+                    pomPath = arg;
+                } else if (arg.contains(":")) {
+                    artifactCoords = arg;
+                } else {
+                    // Fallback to pomPath if it doesn't look like anything else
+                    pomPath = arg;
+                }
+            }
+
+            if (pomPath == null && artifactCoords == null && inputPath == null) {
+                pomPath = "pom.xml";
+            }
+
             String convertFormat = cmd.getOptionValue("convert-format");
             String outputPath = cmd.getOptionValue("output");
             String cachePath = cmd.getOptionValue("cache");
@@ -130,8 +151,7 @@ public class Main {
             String defaultCveData = System.getProperty("user.home") + "/.m2/dependency-check-data";
             String cveDataDir = cmd.hasOption("cve-data") ? cmd.getOptionValue("cve-data") : defaultCveData;
 
-            String pomPath = cmd.getOptionValue("pom", "pom.xml");
-            File pomFile = new File(pomPath);
+            File pomFile = artifactCoords != null || inputPath != null ? null : new File(pomPath);
             DependencyResolverService service = new DependencyResolverService();
 
             if (cmd.hasOption("cve-update")) {
@@ -146,6 +166,9 @@ public class Main {
                 if (inputPath != null) {
                     System.out.println("[CVE] Reading dependencies from: " + inputPath);
                     deps = DependencyResolverService.readPerDepFromFile(inputPath);
+                } else if (artifactCoords != null) {
+                    System.out.println("[CVE] Resolving dependencies for: " + artifactCoords);
+                    deps = service.resolvePerDepForArtifact(artifactCoords, scopesStr, cachePath);
                 } else {
                     System.out.println("[CVE] Resolving dependencies from: " + pomPath);
                     deps = service.resolvePerDep(pomFile, scopesStr, cachePath);
@@ -172,7 +195,7 @@ public class Main {
                 }
             }
 
-            run(destDir, pomPath, outputPath, reportPath, cachePath, scopesStr, copyJars, classpathMode,
+            run(destDir, pomPath, artifactCoords, outputPath, reportPath, cachePath, scopesStr, copyJars, classpathMode,
                     cveReportPath, cveDataDir, extraClasspathFile);
 
         } catch (ParseException e) {
@@ -185,28 +208,18 @@ public class Main {
         }
     }
 
-    private static void run(String destDir, String pomPath, String outputPath, String reportPath, String cachePath,
+    private static void run(String destDir, String pomPath, String artifactCoords, String outputPath, String reportPath,
+            String cachePath,
             String scopesStr, boolean copyJars, boolean classpathMode,
             String cveReportPath, String cveDataDir, String extraClasspathFile) throws Exception {
 
-        // Size report logic remains as is (still uses pomPath)
-        File pomFile = new File(pomPath);
-        if (!pomFile.exists()) {
-            throw new IllegalArgumentException("POM file not found: " + pomPath);
-        }
-
+        Model model;
         RepositorySystem system = Bootstrapper.newRepositorySystem();
 
         String defaultM2 = System.getProperty("user.home") + "/.m2/repository";
         String sourceRepoPath = (cachePath != null) ? cachePath : defaultM2;
 
-        // Resolution always happens FROM sourceRepoPath (via LocalRepositoryManager)
-        // BUT if copyJars is true AND destDir is provided, we use destDir as the "local
-        // repo"
-        // for the session, so Aether will copy artifacts from "remote" repos (including
-        // our cache)
         String sessionLocalRepoPath = (copyJars && destDir != null) ? destDir : sourceRepoPath;
-
         RepositorySystemSession session = Bootstrapper.newRepositorySystemSession(system, sessionLocalRepoPath);
 
         if (outputPath != null) {
@@ -217,17 +230,35 @@ public class Main {
         // Always add Central
         List<RemoteRepository> repos = Bootstrapper.newRepositories(system, session, sourceRepoPath);
 
-        // If we are copying, we MUST add the sourceRepoPath (local .m2) as a "remote"
-        // cache
-        // so it's a source for resolution while the session "local repo" is the
-        // destination
         if (copyJars && destDir != null) {
             repos.add(0,
                     new RemoteRepository.Builder("local-cache", "default", new File(sourceRepoPath).toURI().toString())
                             .build());
         }
 
-        Model model = Bootstrapper.resolveModel(pomFile, system, session, repos);
+        if (artifactCoords != null) {
+            DependencyFormatInfo info = FormatConverter.parse(artifactCoords);
+            if (info == null || info.isLocal()) {
+                throw new IllegalArgumentException("Invalid artifact coordinates: " + artifactCoords);
+            }
+            model = new Model();
+            model.setGroupId("hr.hrg.maven.getdeps");
+            model.setArtifactId("adhoc");
+            model.setVersion("1.0.0");
+            org.apache.maven.model.Dependency dep = new org.apache.maven.model.Dependency();
+            dep.setGroupId(info.groupId());
+            dep.setArtifactId(info.artifactId());
+            dep.setVersion(info.version());
+            dep.setClassifier(info.classifier());
+            dep.setType(info.extension());
+            model.addDependency(dep);
+        } else {
+            File pomFile = new File(pomPath);
+            if (!pomFile.exists()) {
+                throw new IllegalArgumentException("POM file not found: " + pomPath);
+            }
+            model = Bootstrapper.resolveModel(pomFile, system, session, repos);
+        }
 
         // Add additional repositories from the POM model
         repos.addAll(Bootstrapper.convertRepositories(model.getRepositories()));
