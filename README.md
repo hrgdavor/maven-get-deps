@@ -21,7 +21,7 @@ This gives you **lean, fast releases**: a 500 KB JAR deploys in milliseconds ove
 
 ## Deployment Philosophy
 
-While modern development often defaults to **Docker** and **Fat JARs**, the I believe that for many deployments, a shared dependency repository combined with thin application JARs is a more efficient and transparent model.
+While modern development often defaults to **Docker** and **Fat JARs**, I believe that for many deployments, a shared dependency repository combined with thin application JARs is a more efficient and transparent model.
 
 ### The JVM is already a Container
 The **Java Virtual Machine (JVM)** is, by definition, a virtual machine. It provides the isolation and portability that many seek in Docker, but with much less overhead:
