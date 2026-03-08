@@ -21,6 +21,17 @@ This gives you **lean, fast releases**: a 500 KB JAR deploys in milliseconds ove
 
 For a detailed guide on setting this up, see **[doc/README.usage-deploy.md](doc/README.usage-deploy.md)**.
 
+## Deployment Philosophy
+
+While modern development often defaults to **Docker** and **Fat JARs**, the I believe that for many deployments, a shared dependency repository combined with thin application JARs is a more efficient and transparent model.
+
+### The JVM is already a Container
+The **Java Virtual Machine (JVM)** is, by definition, a virtual machine. It provides the isolation and portability that many seek in Docker, but with much less overhead:
+- **Multi-Version Coexistence**: You can easily install multiple JDK versions on a single host (using tools like [SDKMAN!](https://sdkman.io/)) and run different applications with different versions side-by-side. 
+- **Fewer Abstraction Layers**: Deploying directly to a host or a simple VM allows for easier inspection. You can use standard OS tools (`top`, `lsof`, `jstack`) without digging through Docker layers, namespaces, or cgroups.
+- **Improved Observability**: Logs, heap dumps, and configuration files are directly accessible on the file system, simplifying backup paths and monitoring agents.
+- **Resource Efficiency**: You avoid the storage and bandwidth cost of pushing large image layers. A "Thin JAR" is often only a few hundred kilobytes, and dependencies are shared across all instances on the host.
+
 
 ## Download
 

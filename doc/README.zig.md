@@ -2,18 +2,7 @@
 
 The Zig version of `maven-get-deps` is a ultra-fast, zero-dependency companion tool designed for high-performance deployment environments, CI/CD pipelines, and scenarios where a JVM is not yet available or desired.
 
-## Deployment Philosophy
-
-While modern development often defaults to **Docker** and **Fat JARs**, the author believes that for many deployments, a shared dependency repository combined with thin application JARs is a more efficient and transparent model.
-
-### The JVM is already a Container
-The **Java Virtual Machine (JVM)** is, by definition, a virtual machine. It provides the isolation and portability that many seek in Docker, but with much less overhead:
-- **Multi-Version Coexistence**: You can easily install multiple JDK versions on a single host (using tools like [SDKMAN!](https://sdkman.io/)) and run different applications with different versions side-by-side. 
-- **Fewer Abstraction Layers**: Deploying directly to a host or a simple VM allows for easier inspection. You can use standard OS tools (`top`, `lsof`, `jstack`) without digging through Docker layers, namespaces, or cgroups.
-- **Improved Observability**: Logs, heap dumps, and configuration files are directly accessible on the file system, simplifying backup paths and monitoring agents.
-- **Resource Efficiency**: You avoid the storage and bandwidth cost of pushing large image layers. A "Thin JAR" is often only a few hundred kilobytes, and dependencies are shared across all instances on the host.
-
-The Zig version of this tool is a powerful bridge for those who may still need **Docker** but want to keep images thin by managing a shared Maven cache across containers.
+It is als a powerful bridge for those who may still need **Docker** but want to keep images thin by managing a shared Maven cache across containers.
 
 - [See the Docker & Kubernetes Integration Guide](README.docker.md)
 
