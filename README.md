@@ -19,7 +19,7 @@ The smarter approach is to separate your **application code** from its **depende
 
 This gives you **lean, fast releases**: a 500 KB JAR deploys in milliseconds over the network. Dependencies only need to be synced when they actually change, not on every release. Multiple app versions on the same server share the same library files on disk.
 
-For a detailed guide on setting this up, see **[README.usage-deploy.md](README.usage-deploy.md)**.
+For a detailed guide on setting this up, see **[doc/README.usage-deploy.md](doc/README.usage-deploy.md)**.
 
 
 ## Download
@@ -32,7 +32,7 @@ Manually download from [GitHub Releases](https://github.com/hrgdavor/maven-get-d
 | `maven-get-deps-windows-x64.zip` | Native Windows binary |
 | `maven-get-deps-cli.jar` | Fat JAR — runs anywhere with `java -jar` |
 
-> The Linux/Windows binaries are built with GraalVM native image for instant startup. For the high-performance Zig binary, see **[README.zig.md](README.zig.md)**.
+> The Linux/Windows binaries are built with GraalVM native image for instant startup. For the high-performance Zig binary, see **[doc/README.zig.md](doc/README.zig.md)**.
 
 To automate downloading the latest release, query the GitHub API:
 `https://api.github.com/repos/hrgdavor/maven-get-deps/releases/latest`
@@ -43,14 +43,14 @@ To automate downloading the latest release, query the GitHub API:
 
 | Guide | Description |
 |---|---|
-| [Deployment & Shared Library](README.usage-deploy.md) | Deploy thin JARs + a shared dep folder. Avoid fat JARs entirely. |
-| [Classpath Generation](README.usage-classpath.md) | Generate `CLASSPATH` from a dep file or `pom.xml`. Includes multi-module `--extra-classpath` guide. |
-| [CVE Vulnerability Scanning](README.usage-cve.md) | Offline CVE scanning with OWASP, CI/CD build-breaking, and clean version search. |
-| [Dependency Size Reporting](README.usage-report.md) | Analyze artifact bloat with incremental size attribution. |
-| [Zig Binary Guide](README.zig.md) | Ultra-fast, zero-dependency binary. Deployment philosophy, SDKMAN!, JVM-vs-container. |
-| [Docker Integration (Dynamic)](README.docker.md) | Thin Docker images with a shared Maven cache. Includes K8s InitContainer pattern. |
-| [Docker Integration (Static)](README.static-docker.md) | Bake a fixed classpath into Docker at build time. Most secure, zero runtime tools. |
-| [Build & Development](README.dev.md) | Building the project, GraalVM native images, and MetadataMerger. |
+| [Deployment & Shared Library](doc/README.usage-deploy.md) | Deploy thin JARs + a shared dep folder. Avoid fat JARs entirely. |
+| [Classpath Generation](doc/README.usage-classpath.md) | Generate `CLASSPATH` from a dep file or `pom.xml`. Includes multi-module `--extra-classpath` guide. |
+| [CVE Vulnerability Scanning](doc/README.usage-cve.md) | Offline CVE scanning with OWASP, CI/CD build-breaking, and clean version search. |
+| [Dependency Size Reporting](doc/README.usage-report.md) | Analyze artifact bloat with incremental size attribution. |
+| [Zig Binary Guide](doc/README.zig.md) | Ultra-fast, zero-dependency binary. Deployment philosophy, SDKMAN!, JVM-vs-container. |
+| [Docker Integration (Dynamic)](doc/README.docker.md) | Thin Docker images with a shared Maven cache. Includes K8s InitContainer pattern. |
+| [Docker Integration (Static)](doc/README.static-docker.md) | Bake a fixed classpath into Docker at build time. Most secure, zero runtime tools. |
+| [Build & Development](doc/README.dev.md) | Building the project, GraalVM native images, and MetadataMerger. |
 
 ---
 
@@ -132,13 +132,13 @@ java -jar maven-get-deps-cli.jar pom.xml --report report.md
 # Or for an ad-hoc artifact
 java -jar maven-get-deps-cli.jar commons-lang:commons-lang:2.6 --report report.md
 ```
-More details in [Dependency Size Reporting](README.usage-report.md) readme.
+More details in [Dependency Size Reporting](doc/README.usage-report.md) readme.
 
 ---
 
 ## Build & Development
 
-See [README.dev.md](README.dev.md) for build instructions, GraalVM native image generation, and metadata maintenance.
+See [doc/README.dev.md](doc/README.dev.md) for build instructions, GraalVM native image generation, and metadata maintenance.
 
-> **Note**See [Comparison with mthmulders/mcs](README.mcs.md) for potential integration and functional overlaps.
+> **Note**See [Comparison with mthmulders/mcs](doc/README.mcs.md) for potential integration and functional overlaps.
 
