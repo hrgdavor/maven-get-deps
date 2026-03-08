@@ -48,6 +48,7 @@ To automate downloading the latest release, query the GitHub API:
 | [Deployment & Shared Library](README.usage-deploy.md) | Deploy thin JARs + a shared dep folder. Avoid fat JARs entirely. |
 | [Classpath Generation](README.usage-classpath.md) | Generate `CLASSPATH` from a dep file or `pom.xml`. Includes multi-module `--extra-classpath` guide. |
 | [CVE Vulnerability Scanning](README.usage-cve.md) | Offline CVE scanning with OWASP, CI/CD build-breaking, and clean version search. |
+| [Dependency Size Reporting](README.usage-report.md) | Analyze artifact bloat with incremental size attribution. |
 | [Zig Binary Guide](README.zig.md) | Ultra-fast, zero-dependency binary. Deployment philosophy, SDKMAN!, JVM-vs-container. |
 | [Docker Integration (Dynamic)](README.docker.md) | Thin Docker images with a shared Maven cache. Includes K8s InitContainer pattern. |
 | [Docker Integration (Static)](README.static-docker.md) | Bake a fixed classpath into Docker at build time. Most secure, zero runtime tools. |
@@ -129,8 +130,7 @@ java -jar maven-get-deps-cli.jar --pom pom.xml --cve-report cve.md  # Scan
 ```bash
 java -jar maven-get-deps-cli.jar --pom pom.xml --report report.md
 ```
-
-Attributes size "incrementally" — each top-level dependency is charged for itself plus all its unique transitives (not counted by any earlier dependency). This pinpoints which direct dependencies are responsible for the most "weight."
+More details in [Dependency Size Reporting](README.usage-report.md) readme.
 
 ---
 
