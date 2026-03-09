@@ -1,6 +1,6 @@
 # Maven Artifact Layout & Regex Conversions
 
-The Maven repository structure is designed for simple, predictable mapping between artifact coordinates and filesystem paths. Understanding this pattern is key for mastering the tool's `gen-index` and `deps` commands, and understanding value such convention brings in maintaining a maven central repository, locala cache, or shared library folder for multiple applicatioin version, aven multiple different applications.
+The Maven repository structure is designed for simple, predictable mapping between artifact coordinates and filesystem paths. Understanding this pattern is key for mastering the tool's `gen-index` and `deps` commands, and understanding value such convention brings in maintaining a maven central repository, local cache, or a shared library folder for multiple application versions( even different applications).
 
 ## The Directory Pattern
 A Maven artifact follows this fixed hierarchy:
