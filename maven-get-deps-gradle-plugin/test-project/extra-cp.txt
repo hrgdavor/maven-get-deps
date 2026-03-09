@@ -1,0 +1,2 @@
+some/extra/path/classes
+another/extra/jar-1.0.jar

@@ -90,6 +90,8 @@ public class Main {
                 "For vulnerable dependencies, search for the nearest clean version (requires network to fetch version list)"));
         options.addOption(new Option("ct", "cve-severity-threshold", true,
                 "CVSS severity threshold (0.0 to 10.0). If any CVE meets/exceeds this, the tool exits with code 1 (default: 8.0)"));
+        options.addOption(new Option("ex", "exclude-cp", true,
+                "Comma-separated list of artifact IDs (G:A) or relative paths to exclude from the classpath."));
 
         CommandLineParser parser = new DefaultParser();
         HelpFormatter formatter = new HelpFormatter();
@@ -134,6 +136,7 @@ public class Main {
             String outputPath = cmd.getOptionValue("output");
             String cachePath = cmd.getOptionValue("cache");
             String extraClasspathFile = cmd.getOptionValue("extra-classpath");
+            String excludes = cmd.getOptionValue("exclude-cp");
 
             String scopesStr = cmd.getOptionValue("scopes", "compile,runtime");
             boolean copyJars = !cmd.hasOption("no-copy");
@@ -196,7 +199,7 @@ public class Main {
             }
 
             run(destDir, pomPath, artifactCoords, outputPath, reportPath, cachePath, scopesStr, copyJars, classpathMode,
-                    cveReportPath, cveDataDir, extraClasspathFile);
+                    cveReportPath, cveDataDir, extraClasspathFile, excludes);
 
         } catch (ParseException e) {
             System.out.println(e.getMessage());
@@ -211,7 +214,7 @@ public class Main {
     private static void run(String destDir, String pomPath, String artifactCoords, String outputPath, String reportPath,
             String cachePath,
             String scopesStr, boolean copyJars, boolean classpathMode,
-            String cveReportPath, String cveDataDir, String extraClasspathFile) throws Exception {
+            String cveReportPath, String cveDataDir, String extraClasspathFile, String excludes) throws Exception {
 
         Model model;
         RepositorySystem system = Bootstrapper.newRepositorySystem();
@@ -267,6 +270,8 @@ public class Main {
                 .map(String::trim)
                 .collect(Collectors.toSet());
 
+        Set<String> excludeSet = DependencyResolverService.normalizeExcludes(excludes);
+
         DependencyResolverService.ResolutionResult result = DependencyResolverService.resolve(
                 system,
                 session,
@@ -274,7 +279,8 @@ public class Main {
                 model.getDependencies(),
                 Main::resolveProperty,
                 model,
-                scopes);
+                scopes,
+                excludeSet);
 
         if (outputPath != null) {
             try (PrintWriter writer = new PrintWriter(new File(outputPath))) {
@@ -311,7 +317,7 @@ public class Main {
 
         if (reportPath != null) {
             DependencyResolverService.ReportResult report = DependencyResolverService.resolveReport(
-                    system, session, repos, model.getDependencies(), Main::resolveProperty, model, scopes);
+                    system, session, repos, model.getDependencies(), Main::resolveProperty, model, scopes, excludeSet);
 
             try (PrintWriter writer = new PrintWriter(new File(reportPath))) {
                 writer.print(report.formatMarkdownTable());
@@ -325,7 +331,7 @@ public class Main {
             } else {
                 java.util.LinkedHashMap<String, List<String>> perDep = DependencyResolverService.resolvePerDep(
                         system, session, repos, model.getDependencies(),
-                        Main::resolveProperty, model, scopes);
+                        Main::resolveProperty, model, scopes, excludeSet);
                 CveReportService.CveReportResult cveResult = CveReportService.scan(cveDataDir, perDep);
                 try (PrintWriter writer = new PrintWriter(new File(cveReportPath))) {
                     writer.print(cveResult.formatMarkdownReport());

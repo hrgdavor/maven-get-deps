@@ -2,16 +2,13 @@
 const std = @import("std");
 
 pub fn bufferedPrint() !void {
-    // Stdout is for the actual output of your application, for example if you
-    // are implementing gzip, then only the compressed bytes should be sent to
-    // stdout, not any debugging messages.
-    var stdout_buffer: [1024]u8 = undefined;
-    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
-    const stdout = &stdout_writer.interface;
+    var out_buf: [1024]u8 = undefined;
+    var writer_struct = std.fs.File.stdout().writer(&out_buf);
+    const stdout = &writer_struct.interface;
 
     try stdout.print("Run `zig build test` to run the tests.\n", .{});
 
-    try stdout.flush(); // Don't forget to flush!
+    try stdout.flush();
 }
 
 pub fn add(a: i32, b: i32) i32 {

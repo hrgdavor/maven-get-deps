@@ -41,6 +41,7 @@ Manually download from [GitHub Releases](https://github.com/hrgdavor/maven-get-d
 | `maven-get-deps-linux-x64.tar.gz` | Native Linux binary |
 | `maven-get-deps-windows-x64.zip` | Native Windows binary |
 | `maven-get-deps-cli.jar` | Fat JAR — runs anywhere with `java -jar` |
+| `maven-get-deps` (Zig) | Ultra-fast native binary with Revision Management |
 
 > The Linux/Windows binaries are built with GraalVM native image for instant startup. For the high-performance Zig binary, see **[doc/README.zig.md](doc/README.zig.md)**.
 
@@ -61,6 +62,8 @@ To automate downloading the latest release, query the GitHub API:
 | [Docker Integration (Dynamic)](doc/README.docker.md) | Thin Docker images with a shared Maven cache. Includes K8s InitContainer pattern. |
 | [Docker Integration (Static)](doc/README.static-docker.md) | Bake a fixed classpath into Docker at build time. Most secure, zero runtime tools. |
 | [Build & Development](doc/README.dev.md) | Building the project, GraalVM native images, and MetadataMerger. |
+| [Gradle Plugin Guide](doc/gradle.plugin.md) | Create a lightweight Gradle equivalent with `--extra-classpath` support. |
+| [Maven Artifact Layout](doc/MAVEN_LAYOUT.md) | Standard directory patterns and regex conversion examples (Java/JS). |
 
 ---
 
@@ -84,7 +87,10 @@ java -jar maven-get-deps-cli.jar commons-lang:commons-lang:2.6
 
 # From a dependency list file
 java -jar maven-get-deps-cli.jar deps.txt --convert-format path --classpath
-```
+
+### Revision Management
+
+The Zig version of the CLI includes a built-in Reconciler for managing application versions via atomic symlink swaps. See **[doc/README.zig.md](doc/README.zig.md#revision-management-zero-downtime-deployment)** for details.
 
 ### CLI (CVE Scan)
 
@@ -99,12 +105,13 @@ java -jar maven-get-deps-cli.jar deps.txt --cve-report cve.md     # Scan deps li
 ## CLI Arguments
 
 | `[source]` | Positional argument: `pom.xml` OR Maven coordinates OR Input file. Default: `pom.xml` |
-| `-o, --output <file>` | Save output to file |
+| `-o, --output <file>` | Path to save the dependency list. |
 | `-d, --dest-dir <dir>` | Destination directory for JAR copies |
 | `-n, --no-copy` | Disable JAR copying even if `--dest-dir` is set |
 | `-c, --cache <dir>` | Local Maven repository (default: `~/.m2/repository`) |
-| `-s, --scopes <list>` | Comma-separated scopes (default: `compile,runtime`) |
-| `--report <file>` | Generate a Markdown dependency-size report |
+| `-r, --report <file>` | Path to save the size report (markdown). |
+| `-ex, --exclude-cp <G:A,path>` | Exclude specific artifacts or paths. |
+| `-sc, --scopes <scopes>` | Comma-separated scopes (default: compile,runtime). |
 | `-cp, --classpath` | Output as OS-separated `CLASSPATH` string |
 | `-cf, --convert-format <fmt>` | Convert format: `colon` or `path` |
 | `-ecp, --extra-classpath <file>` | File with extra classpath entries to append (one per line) |
@@ -114,6 +121,7 @@ java -jar maven-get-deps-cli.jar deps.txt --cve-report cve.md     # Scan deps li
 | `-nk, --nvd-api-key <key>` | NVD API key for faster updates |
 | `-cv, --cve-check-versions` | Search for nearest clean version for vulnerable deps |
 | `-ct, --cve-severity-threshold <val>` | CVSS threshold for build-breaking (default: `8.0`) |
+
 
 ### Maven Plugin Parameters
 
@@ -143,6 +151,17 @@ java -jar maven-get-deps-cli.jar pom.xml --report report.md
 java -jar maven-get-deps-cli.jar commons-lang:commons-lang:2.6 --report report.md
 ```
 More details in [Dependency Size Reporting](doc/README.usage-report.md) readme.
+
+---
+
+
+---
+
+### Gradle Plugin
+
+The `maven-get-deps-gradle-plugin` allows you to export dependencies directly from your Gradle projects.
+
+See [maven-get-deps-gradle-plugin/README.md](maven-get-deps-gradle-plugin/README.md) for installation and usage instructions.
 
 ---
 

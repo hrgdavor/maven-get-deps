@@ -20,7 +20,7 @@ pub const DependencyFormatInfo = struct {
 
 pub fn parse(allocator: std.mem.Allocator, line: []const u8) !?DependencyFormatInfo {
     const trimmed = std.mem.trim(u8, line, " \t\r\n");
-    if (trimmed.len == 0) return null;
+    if (trimmed.len == 0 or trimmed[0] == '#') return null;
 
     if (std.mem.startsWith(u8, trimmed, "./") or std.mem.startsWith(u8, trimmed, ".\\")) {
         return DependencyFormatInfo{ .local_path = trimmed };

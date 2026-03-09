@@ -8,12 +8,5 @@ test-temp-m2
 .zig-cache
 zig-out/bin
 .vscode
-test-cache
-test-deploy
-build_*.txt
-build_*.log
-build_*.err
+.gradle
 build
-
-
-test_deps.txt

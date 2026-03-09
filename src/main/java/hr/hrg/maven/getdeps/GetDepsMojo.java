@@ -58,6 +58,9 @@ public class GetDepsMojo extends AbstractMojo {
     @Parameter(property = "cache")
     private String cache;
 
+    @Parameter(property = "exclude-cp")
+    private String excludeClasspath;
+
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
         try {
@@ -96,6 +99,8 @@ public class GetDepsMojo extends AbstractMojo {
                     .map(String::trim)
                     .collect(Collectors.toSet());
 
+            Set<String> excludeSet = DependencyResolverService.normalizeExcludes(excludeClasspath);
+
             DependencyResolverService.ResolutionResult result = DependencyResolverService.resolve(
                     repoSystem,
                     session,
@@ -103,7 +108,8 @@ public class GetDepsMojo extends AbstractMojo {
                     project.getDependencies(),
                     this::resolveProperty,
                     project.getModel(),
-                    scopeSet);
+                    scopeSet,
+                    excludeSet);
 
             if (outputFile != null) {
                 try (PrintWriter writer = new PrintWriter(outputFile)) {
@@ -133,7 +139,7 @@ public class GetDepsMojo extends AbstractMojo {
             if (reportFile != null) {
                 DependencyResolverService.ReportResult report = DependencyResolverService.resolveReport(
                         repoSystem, session, effectiveRepos, project.getDependencies(), this::resolveProperty,
-                        project.getModel(), scopeSet);
+                        project.getModel(), scopeSet, excludeSet);
 
                 try (PrintWriter writer = new PrintWriter(reportFile)) {
                     writer.print(report.formatMarkdownTable());

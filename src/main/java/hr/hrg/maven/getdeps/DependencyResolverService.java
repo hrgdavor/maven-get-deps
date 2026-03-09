@@ -15,6 +15,7 @@ import org.eclipse.aether.util.filter.DependencyFilterUtils;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -92,7 +93,8 @@ public class DependencyResolverService {
             List<org.apache.maven.model.Dependency> dependencies,
             java.util.function.BiFunction<String, org.apache.maven.model.Model, String> propertyResolver,
             org.apache.maven.model.Model model,
-            Set<String> scopes) throws Exception {
+            Set<String> scopes,
+            Set<String> excludeSet) throws Exception {
 
         CollectRequest collectRequest = new CollectRequest();
         for (org.apache.maven.model.Dependency dep : dependencies) {
@@ -128,7 +130,14 @@ public class DependencyResolverService {
 
                 // Use LocalRepositoryManager to get the relative path within the repository
                 String relativePath = session.getLocalRepositoryManager().getPathForLocalArtifact(artifact);
-                relativePaths.add(relativePath.replace('\\', '/'));
+                String normalizedPath = relativePath.replace('\\', '/');
+
+                if (isExcluded(artifact.getGroupId(), artifact.getArtifactId(), normalizedPath, excludeSet)) {
+                    totalSize -= file.length(); // Backtrack size as we are skipping it
+                    continue;
+                }
+
+                relativePaths.add(normalizedPath);
 
                 // Also ensure POM is resolved/present
                 Artifact pomArtifact = new DefaultArtifact(artifact.getGroupId(), artifact.getArtifactId(),
@@ -151,7 +160,8 @@ public class DependencyResolverService {
             List<org.apache.maven.model.Dependency> dependencies,
             java.util.function.BiFunction<String, org.apache.maven.model.Model, String> propertyResolver,
             org.apache.maven.model.Model model,
-            Set<String> scopes) throws Exception {
+            Set<String> scopes,
+            Set<String> excludeSet) throws Exception {
 
         List<ReportEntry> entries = new ArrayList<>();
         java.util.Set<String> seenArtifacts = new java.util.HashSet<>();
@@ -182,6 +192,11 @@ public class DependencyResolverService {
 
                 for (ArtifactResult artifactResult : result.getArtifactResults()) {
                     Artifact artifact = artifactResult.getArtifact();
+                    String relativePath = session.getLocalRepositoryManager().getPathForLocalArtifact(artifact);
+                    if (isExcluded(artifact.getGroupId(), artifact.getArtifactId(), relativePath, excludeSet)) {
+                        continue;
+                    }
+
                     String artifactIdStr = artifact.getGroupId() + ":" + artifact.getArtifactId() + ":"
                             + artifact.getVersion() + ":" + artifact.getClassifier() + ":" + artifact.getExtension();
 
@@ -242,7 +257,7 @@ public class DependencyResolverService {
                 .collect(java.util.stream.Collectors.toSet());
 
         return resolvePerDep(system, session, repos, model.getDependencies(),
-                (v, m) -> Bootstrapper.resolveProperty(v, m), model, scopes);
+                (v, m) -> Bootstrapper.resolveProperty(v, m), model, scopes, new java.util.HashSet<>());
     }
 
     /**
@@ -269,7 +284,7 @@ public class DependencyResolverService {
                 .collect(java.util.stream.Collectors.toSet());
 
         return resolvePerDep(system, session, repos, model.getDependencies(),
-                (v, m) -> Bootstrapper.resolveProperty(v, m), model, scopes);
+                (v, m) -> Bootstrapper.resolveProperty(v, m), model, scopes, new java.util.HashSet<>());
     }
 
     public static java.util.LinkedHashMap<String, List<String>> resolvePerDep(
@@ -279,7 +294,8 @@ public class DependencyResolverService {
             List<org.apache.maven.model.Dependency> dependencies,
             java.util.function.BiFunction<String, org.apache.maven.model.Model, String> propertyResolver,
             org.apache.maven.model.Model model,
-            Set<String> scopes) throws Exception {
+            Set<String> scopes,
+            Set<String> excludeSet) throws Exception {
 
         java.util.LinkedHashMap<String, List<String>> result = new java.util.LinkedHashMap<>();
 
@@ -309,6 +325,10 @@ public class DependencyResolverService {
             List<String> coords = new ArrayList<>();
             for (ArtifactResult artifactResult : depResult.getArtifactResults()) {
                 Artifact artifact = artifactResult.getArtifact();
+                String relativePath = session.getLocalRepositoryManager().getPathForLocalArtifact(artifact);
+                if (isExcluded(artifact.getGroupId(), artifact.getArtifactId(), relativePath, excludeSet)) {
+                    continue;
+                }
                 coords.add(artifact.getGroupId() + ":" + artifact.getArtifactId() + ":" + artifact.getVersion());
             }
             result.put(directKey, coords);
@@ -342,5 +362,56 @@ public class DependencyResolverService {
             result.put(direct, closure);
         }
         return result;
+    }
+
+    public static Set<String> normalizeExcludes(String excludes) {
+        Set<String> result = new HashSet<>();
+        if (excludes == null || excludes.isEmpty())
+            return result;
+        for (String s : excludes.split(",")) {
+            String trimmed = s.trim().replace('\\', '/');
+            if (trimmed.isEmpty())
+                continue;
+            result.add(trimmed);
+
+            // If it's a path, try to extract G:A variant
+            if (trimmed.contains("/") && trimmed.endsWith(".jar")) {
+                String ga = extractGAFromPath(trimmed);
+                if (ga != null)
+                    result.add(ga);
+            }
+        }
+        return result;
+    }
+
+    private static String extractGAFromPath(String path) {
+        // Expected: group/id/artifact/id/version/artifact-id-version.jar
+        String[] parts = path.split("/");
+        if (parts.length < 4)
+            return null;
+        String artifactId = parts[parts.length - 3];
+        StringBuilder groupId = new StringBuilder();
+        for (int i = 0; i < parts.length - 3; i++) {
+            if (i > 0)
+                groupId.append(".");
+            groupId.append(parts[i]);
+        }
+        return groupId.toString() + ":" + artifactId;
+    }
+
+    public static boolean isExcluded(String groupId, String artifactId, String relativePath, Set<String> excludes) {
+        if (excludes == null || excludes.isEmpty())
+            return false;
+        if (excludes.contains(groupId + ":" + artifactId))
+            return true;
+        String normalizedPath = relativePath.replace('\\', '/');
+        if (excludes.contains(normalizedPath))
+            return true;
+        // Optionally check if path starts with or ends with any excluded prefix/suffix
+        for (String ex : excludes) {
+            if (normalizedPath.startsWith(ex) || normalizedPath.endsWith(ex))
+                return true;
+        }
+        return false;
     }
 }

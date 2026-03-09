@@ -8,10 +8,15 @@ public class FormatConverter {
      * path format.
      */
     public static DependencyFormatInfo parse(String line) {
-        if (line == null || line.isBlank()) {
+        if (line == null) {
             return null;
         }
+
         line = line.trim();
+
+        if (line.isBlank() || line.startsWith("#")) {
+            return null;
+        }
 
         if (line.startsWith("./") || line.startsWith(".\\")) {
             return DependencyFormatInfo.local(line);
