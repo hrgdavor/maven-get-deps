@@ -198,7 +198,8 @@ public class Main {
                 }
             }
 
-            run(destDir, pomPath, artifactCoords, outputPath, reportPath, cachePath, scopesStr, copyJars, classpathMode,
+            run(destDir, pomPath, artifactCoords, inputPath, outputPath, reportPath, cachePath, scopesStr, copyJars,
+                    classpathMode,
                     cveReportPath, cveDataDir, extraClasspathFile, excludes);
 
         } catch (ParseException e) {
@@ -211,7 +212,8 @@ public class Main {
         }
     }
 
-    private static void run(String destDir, String pomPath, String artifactCoords, String outputPath, String reportPath,
+    private static void run(String destDir, String pomPath, String artifactCoords, String inputPath, String outputPath,
+            String reportPath,
             String cachePath,
             String scopesStr, boolean copyJars, boolean classpathMode,
             String cveReportPath, String cveDataDir, String extraClasspathFile, String excludes) throws Exception {
@@ -255,6 +257,8 @@ public class Main {
             dep.setClassifier(info.classifier());
             dep.setType(info.extension());
             model.addDependency(dep);
+        } else if (inputPath != null) {
+            model = modelFromDepsFile(inputPath);
         } else {
             File pomFile = new File(pomPath);
             if (!pomFile.exists()) {
@@ -416,5 +420,31 @@ public class Main {
             writer.close();
             System.out.println("Output written to: " + outputPath);
         }
+    }
+
+    private static Model modelFromDepsFile(String path) throws java.io.IOException {
+        Model model = new Model();
+        model.setGroupId("hr.hrg.maven.getdeps");
+        model.setArtifactId("adhoc-file");
+        model.setVersion("1.0.0");
+
+        List<String> lines = java.nio.file.Files.readAllLines(new File(path).toPath());
+        for (String line : lines) {
+            line = line.trim();
+            if (line.isEmpty() || line.startsWith("#"))
+                continue;
+
+            DependencyFormatInfo info = FormatConverter.parse(line);
+            if (info != null && !info.isLocal()) {
+                org.apache.maven.model.Dependency dep = new org.apache.maven.model.Dependency();
+                dep.setGroupId(info.groupId());
+                dep.setArtifactId(info.artifactId());
+                dep.setVersion(info.version());
+                dep.setClassifier(info.classifier());
+                dep.setType(info.extension());
+                model.addDependency(dep);
+            }
+        }
+        return model;
     }
 }

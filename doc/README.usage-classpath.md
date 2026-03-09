@@ -19,6 +19,24 @@ java -jar maven-get-deps-cli.jar --pom pom.xml --classpath
 /home/user/.m2/repository/org/springframework/spring-core/6.1.0/spring-core-6.1.0.jar:/home/user/.m2/repository/...
 ```
 
+## Transitive Resolution from a Dependencies File
+
+The Java CLI can also ingest a simple dependencies file (in either colon or path format) and resolve all transient dependencies, effectively expanding a list of starting points into a full classpath.
+
+```bash
+# test-deps.txt
+# org.slf4j:slf4j-api:2.1.0-alpha1
+# com.google.guava:guava:32.1.3-jre
+
+java -jar maven-get-deps-cli.jar test-deps.txt --classpath
+```
+
+The tool will:
+1. Parse the starting artifacts from the file.
+2. Build a temporary Maven model.
+3. Use the Maven resolution engine to fetch all transitive dependencies.
+4. Output the full resolved classpath.
+
 ## Generating a CLASSPATH from a `dependencies.txt` file
 
 This is the primary deployment pattern. Your app ships with a pre-generated `dependencies.txt` file (in `path` format) and the tool assembles the classpath at startup:
