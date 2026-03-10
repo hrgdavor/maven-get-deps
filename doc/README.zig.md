@@ -60,6 +60,9 @@ The Zig tool can manage application versions by atomically swapping a "current" 
 # 3. Generate Version Index (scans directories for version.json or custom file)
 ./maven_get_deps gen-index --folders folders.txt --output versions.json --version-file pkg.json
 ./maven_get_deps gen-index --folders folders.txt --output versions.json --version-file cp.txt
+
+# 4. Handle a failed deployment (reverts to previous stable and marks current as failed)
+./maven_get_deps upgrade-failed --manifest manifest.json
 ```
 
 ## Revision Management Deep Dive
@@ -76,7 +79,8 @@ The manifest is the source of truth for an application's deployment state.
     {
       "version": "1.2.3",
       "timestamp": 1710123456,
-      "comment": "Previous stable release"
+      "comment": "Previous stable release",
+      "failed": false
     }
   ]
 }
@@ -110,11 +114,20 @@ Each version folder should ideally contain a `version.json` (or a custom file sp
 }
 ```
 
-| Field | Description | Fallback Logic |
-| :--- | :--- | :--- |
 | `version` | The logical ID for deployment. | Uses the **Folder Name** if missing from JSON. |
 | `timestamp`| Unix timestamp (seconds). | Uses **File Modification Time** of `version.json` if missing. |
 | `description`| Optional text for the index. | Remains `null` if not provided. |
+
+### Failure Recovery (`upgrade-failed`)
+The `upgrade-failed` command is used when a newly deployed version is found to be unstable (e.g., by a health check or manual observation).
+
+When you run `upgrade-failed`:
+1. The **current version** is moved into history and tagged with `"failed": true`.
+2. The **most recent successful version** in history is promoted back to `current_version`.
+3. An **atomic symlink swap** is performed, and the `trigger_cmd` is executed.
+
+> [!IMPORTANT]
+> **Safety Check**: Once a version is marked as failed, the `deploy` command will block any attempt to re-deploy it by mistake, preventing infinite revert loops or accidental re-activations of broken builds.
 
 ### Atomic Symlink Swaps
 When `reconcile` (or `deploy`) detects a version mismatch, it:
@@ -234,6 +247,7 @@ The tool relies on the standard Maven repository structure for mapping between a
 -   `--folders <file>`: (Gen-Index) File containing list of folders to scan.
 -   `-o, --output <file>`: (Gen-Index) Output index file path (defaults to `versions.json`).
 -   `--version-file <name>`: (Gen-Index) Custom version file name to look for (defaults to `version.json`).
+-   `upgrade-failed`: Revert to the previous version and mark the current one as failed in history.
 
 ## Building from source
 

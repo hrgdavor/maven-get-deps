@@ -1,10 +1,37 @@
 # maven-get-deps
 
-A standalone tool to resolve and download Maven dependencies to a local folder, and generate classpath files for scripting. Uses the standard Maven repository structure, making it compatible with your existing `~/.m2/repository`.
+Available in multiple enviroments for flexibility so you can do some of the tasks without maven or java installed.
+
+Mave repository is the backbone of java dependency mamagement regardless if you use mvn gradle mvnd ivy ... And the [format that reliably maps artifact definition to folder name](doc/MAVEN_LAYOUT.md) in a repository is a great asset to working with java dependencies. And tools here adhere to the vonvention making the process compatible with your existing `~/.m2/repository`.
+
+This project contains a set of utilities that work together
+
+- expand dependencies to include transient dependencies
+- fill local maven cache with missing dependencies
+- copy dependencies to separate folder
+- generate classpath file (newline delimited)
+- generate classpath suitable for enviroment CLASSPATH variable to simplify running java code
+- generate index of available versions (one sample way here to get you started, that you can change to suit your needs)
+- manage version upgrade/revert and keeping version history
+  - upgrade will validate version from index file to avoid typo breaking deployment(stopping old instance and failing the new one)
+
+| Guide | Description |
+|---|---|
+| [Deployment & Shared Library](doc/README.usage-deploy.md) | Deploy thin JARs + a shared dep folder. Avoid fat JARs entirely. |
+| [Classpath Generation](doc/README.usage-classpath.md) | Generate `CLASSPATH` from a dep file or `pom.xml`. Includes multi-module `--extra-classpath` guide. |
+| [CVE Vulnerability Scanning](doc/README.usage-cve.md) | Offline CVE scanning with OWASP, CI/CD build-breaking, and clean version search. |
+| [Dependency Size Reporting](doc/README.usage-report.md) | Analyze artifact bloat with incremental size attribution. |
+| [Zig Binary Guide](doc/README.zig.md) | Ultra-fast, zero-dependency binary. Deployment philosophy, SDKMAN!, JVM-vs-container. |
+| [Docker Integration (Dynamic)](doc/README.docker.md) | Thin Docker images with a shared Maven cache. Includes K8s InitContainer pattern. |
+| [Docker Integration (Static)](doc/README.static-docker.md) | Bake a fixed classpath into Docker at build time. Most secure, zero runtime tools. |
+| [Build & Development](doc/README.dev.md) | Building the project, GraalVM native images, and MetadataMerger. |
+| [Gradle Plugin Guide](doc/gradle.plugin.md) | Create a lightweight Gradle equivalent with `--extra-classpath` support. |
+| [Maven Artifact Layout](doc/MAVEN_LAYOUT.md) | Standard directory patterns and regex conversion examples (Java/JS). |
+
 
 ## Why
 
-To deploy a Java app to a remote server you need your classes **and** all of your dependencies. Usually, this means copying dependencies to a `lib/` folder alongside your JAR, or even worse, creating fat JARs.
+This whole toolset started from looking to deploy a Java app to a remote server. You need your classes **and** all of your dependencies to start your app there. Usually, this means copying dependencies to a `lib/` folder alongside your JAR, or even worse, creating fat JARs. I find that surrender to bloat unacceptable.
 
 With frameworks like Spring bloat and Hibernate, even a moderately sized app — say **500 KB** of *your* code — can carry **50–100 MB** of dependencies. That's a **200× size difference** every time you deploy a new version. And it gets worse with microservices: each service has less code but the same pile of libraries.
 
@@ -17,7 +44,7 @@ The smarter approach is to separate your **application code** from its **depende
 - Deploy only the **thin JAR** (your code) + a small `dependencies.txt` manifest per release
 - At startup, use `maven-get-deps` to assemble the `CLASSPATH` from the shared folder instantly
 
-This gives you **lean, fast releases**: a 500 KB JAR deploys in milliseconds over the network. Dependencies only need to be synced when they actually change, not on every release. Multiple app versions on the same server share the same library files on disk.
+It will pay off in the long run, as it gives you **lean, fast releases**: a 500 KB JAR deploys in milliseconds over the network. Dependencies only need to be synced when they actually change, not on every release. Multiple app versions on the same server share the same library files on disk. Your version repository does not baloon in size once version start to pile, so you need less agressive pruning.
 
 ## Deployment Philosophy
 
@@ -47,23 +74,6 @@ Manually download from [GitHub Releases](https://github.com/hrgdavor/maven-get-d
 
 To automate downloading the latest release, query the GitHub API:
 `https://api.github.com/repos/hrgdavor/maven-get-deps/releases/latest`
-
----
-
-## Use Cases
-
-| Guide | Description |
-|---|---|
-| [Deployment & Shared Library](doc/README.usage-deploy.md) | Deploy thin JARs + a shared dep folder. Avoid fat JARs entirely. |
-| [Classpath Generation](doc/README.usage-classpath.md) | Generate `CLASSPATH` from a dep file or `pom.xml`. Includes multi-module `--extra-classpath` guide. |
-| [CVE Vulnerability Scanning](doc/README.usage-cve.md) | Offline CVE scanning with OWASP, CI/CD build-breaking, and clean version search. |
-| [Dependency Size Reporting](doc/README.usage-report.md) | Analyze artifact bloat with incremental size attribution. |
-| [Zig Binary Guide](doc/README.zig.md) | Ultra-fast, zero-dependency binary. Deployment philosophy, SDKMAN!, JVM-vs-container. |
-| [Docker Integration (Dynamic)](doc/README.docker.md) | Thin Docker images with a shared Maven cache. Includes K8s InitContainer pattern. |
-| [Docker Integration (Static)](doc/README.static-docker.md) | Bake a fixed classpath into Docker at build time. Most secure, zero runtime tools. |
-| [Build & Development](doc/README.dev.md) | Building the project, GraalVM native images, and MetadataMerger. |
-| [Gradle Plugin Guide](doc/gradle.plugin.md) | Create a lightweight Gradle equivalent with `--extra-classpath` support. |
-| [Maven Artifact Layout](doc/MAVEN_LAYOUT.md) | Standard directory patterns and regex conversion examples (Java/JS). |
 
 ---
 

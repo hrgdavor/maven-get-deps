@@ -21,8 +21,13 @@ pub fn main() !void {
         try cmdDeploy(allocator, args[2..]);
     } else if (std.mem.eql(u8, command, "reconcile")) {
         try cmdReconcile(allocator, args[2..]);
+    } else if (std.mem.eql(u8, command, "upgrade-failed")) {
+        try cmdUpgradeFailed(allocator, args[2..]);
     } else if (std.mem.eql(u8, command, "gen-index")) {
         try cmdGenIndex(allocator, args[2..]);
+    } else if (std.mem.eql(u8, command, "--help") or std.mem.eql(u8, command, "-h")) {
+        printUsage();
+        return;
     } else if (std.mem.eql(u8, command, "--input") or std.mem.eql(u8, command, "-i")) {
         // Backward compatibility: default to 'deps' if first arg looks like old flag
         try cmdDeps(allocator, args[1..]);
@@ -38,9 +43,10 @@ fn printUsage() void {
         \\Usage: maven_get_deps <command> [options]
         \\
         \\Commands:
-        \\  deps       Resolve Maven dependencies (default if --input is first)
-        \\  deploy     Deploy a new version
-        \\  reconcile  Ensure symlink matches manifest
+        \\  deps            Resolve Maven dependencies (default if --input is first)
+        \\  deploy          Deploy a new version
+        \\  reconcile       Ensure symlink matches manifest
+        \\  upgrade-failed  Revert to previous version and mark current as failed
         \\
         \\Deps Options:
         \\  --input <file>              Input file
@@ -55,6 +61,9 @@ fn printUsage() void {
         \\  --manifest <file>           Manifest file path (default: manifest.json)
         \\
         \\Reconcile Options:
+        \\  --manifest <file>           Manifest file path (default: manifest.json)
+        \\
+        \\Upgrade-Failed Options:
         \\  --manifest <file>           Manifest file path (default: manifest.json)
         \\
         \\Gen-Index Options:
@@ -268,6 +277,21 @@ fn cmdReconcile(allocator: std.mem.Allocator, args: []const []const u8) !void {
     }
 
     _ = try version_manager.reconcile(allocator, manifest_path);
+}
+
+fn cmdUpgradeFailed(allocator: std.mem.Allocator, args: []const []const u8) !void {
+    var manifest_path: []const u8 = "manifest.json";
+
+    var i: usize = 0;
+    while (i < args.len) : (i += 1) {
+        const arg = args[i];
+        if (std.mem.eql(u8, arg, "--manifest")) {
+            i += 1;
+            if (i < args.len) manifest_path = args[i];
+        }
+    }
+
+    try version_manager.upgradeFailed(allocator, manifest_path);
 }
 
 fn downloadFile(client: *std.http.Client, url: []const u8, dest_path: []const u8) !void {
