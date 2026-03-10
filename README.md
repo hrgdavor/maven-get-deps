@@ -2,7 +2,7 @@
 
 Available in multiple enviroments for flexibility so you can do some of the tasks without maven or java installed.
 
-Mave repository is the backbone of java dependency mamagement regardless if you use mvn gradle mvnd ivy ... And the [format that reliably maps artifact definition to folder name](doc/MAVEN_LAYOUT.md) in a repository is a great asset to working with java dependencies. And tools here adhere to the vonvention making the process compatible with your existing `~/.m2/repository`.
+Mave repository is the backbone of java dependency mamagement regardless if you use `mvn`, `gradle`, `mvnd`, `ivy` ... And the [format that reliably maps artifact definition to folder name](doc/MAVEN_LAYOUT.md) in any maven repository is a great asset to working with java dependencies. The tools here follow that convention making the process compatible with your existing `~/.m2/repository` and maven central.
 
 This project contains a set of utilities that work together
 
@@ -15,9 +15,11 @@ This project contains a set of utilities that work together
 - manage version upgrade/revert and keeping version history
   - upgrade will validate version from index file to avoid typo breaking deployment(stopping old instance and failing the new one)
 
+
 | Guide | Description |
 |---|---|
 | [Deployment & Shared Library](doc/README.usage-deploy.md) | Deploy thin JARs + a shared dep folder. Avoid fat JARs entirely. |
+| [Systemd Daemon Guide](doc/README.systemd.md) | Deploy a Java daemon with `systemd` and atomic versioning. |
 | [Classpath Generation](doc/README.usage-classpath.md) | Generate `CLASSPATH` from a dep file or `pom.xml`. Includes multi-module `--extra-classpath` guide. |
 | [CVE Vulnerability Scanning](doc/README.usage-cve.md) | Offline CVE scanning with OWASP, CI/CD build-breaking, and clean version search. |
 | [Dependency Size Reporting](doc/README.usage-report.md) | Analyze artifact bloat with incremental size attribution. |

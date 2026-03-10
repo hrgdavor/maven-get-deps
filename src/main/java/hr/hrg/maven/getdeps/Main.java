@@ -9,10 +9,8 @@ import org.eclipse.aether.repository.RemoteRepository;
 
 import java.io.File;
 import java.io.PrintWriter;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 import hr.hrg.maven.getdeps.FormatConverter;
 import hr.hrg.maven.getdeps.DependencyFormatInfo;
 import java.util.Map;
@@ -270,9 +268,7 @@ public class Main {
         // Add additional repositories from the POM model
         repos.addAll(Bootstrapper.convertRepositories(model.getRepositories()));
 
-        Set<String> scopes = Arrays.stream(scopesStr.split(","))
-                .map(String::trim)
-                .collect(Collectors.toSet());
+        Set<String> scopes = StreamUtil.splitToSet(scopesStr, ",");
 
         Set<String> excludeSet = DependencyResolverService.normalizeExcludes(excludes);
 
@@ -289,9 +285,7 @@ public class Main {
         if (outputPath != null) {
             try (PrintWriter writer = new PrintWriter(new File(outputPath))) {
                 if (classpathMode) {
-                    List<String> paths = result.relativePaths.stream()
-                            .map(p -> new File(sourceRepoPath, p).getAbsolutePath())
-                            .collect(Collectors.toList());
+                    List<String> paths = StreamUtil.map(result.relativePaths, p -> new File(sourceRepoPath, p).getAbsolutePath());
                     if (extraClasspathFile != null) {
                         paths.addAll(java.nio.file.Files.readAllLines(new File(extraClasspathFile).toPath()));
                     }
@@ -305,9 +299,7 @@ public class Main {
             System.out.println("Output written to: " + outputPath);
         } else {
             if (classpathMode) {
-                List<String> paths = result.relativePaths.stream()
-                        .map(p -> new File(sourceRepoPath, p).getAbsolutePath())
-                        .collect(Collectors.toList());
+                List<String> paths = StreamUtil.map(result.relativePaths, p -> new File(sourceRepoPath, p).getAbsolutePath());
                 if (extraClasspathFile != null) {
                     paths.addAll(java.nio.file.Files.readAllLines(new File(extraClasspathFile).toPath()));
                 }

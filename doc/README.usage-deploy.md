@@ -109,3 +109,4 @@ For Docker and Kubernetes deployments, see these guides:
 
 - **[Dynamic Cache (Docker)](README.docker.md)** — Use the Zig tool inside Docker to fill a shared Maven cache at container startup.
 - **[Static Classpath (Docker & K8s)](README.static-docker.md)** — Bake a fixed classpath into your Docker image at build time for the leanest, most secure runtime.
+- **[Systemd Deployment Guide](README.systemd.md)** — Step-by-step example of deploying a multi-module Java daemon.

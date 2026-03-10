@@ -17,10 +17,8 @@ import org.eclipse.aether.repository.RemoteRepository;
 import java.io.File;
 import java.io.PrintWriter;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 @Mojo(name = "get-deps", defaultPhase = LifecyclePhase.PACKAGE)
 public class GetDepsMojo extends AbstractMojo {
@@ -61,6 +59,9 @@ public class GetDepsMojo extends AbstractMojo {
     @Parameter(property = "exclude-cp")
     private String excludeClasspath;
 
+    @Parameter(property = "extra-cp")
+    private File extraClasspath;
+
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
         try {
@@ -95,9 +96,7 @@ public class GetDepsMojo extends AbstractMojo {
                                 .build());
             }
 
-            Set<String> scopeSet = Arrays.stream(scopes.split(","))
-                    .map(String::trim)
-                    .collect(Collectors.toSet());
+            Set<String> scopeSet = StreamUtil.splitToSet(scopes, ",");
 
             Set<String> excludeSet = DependencyResolverService.normalizeExcludes(excludeClasspath);
 
@@ -114,24 +113,38 @@ public class GetDepsMojo extends AbstractMojo {
             if (outputFile != null) {
                 try (PrintWriter writer = new PrintWriter(outputFile)) {
                     if (classpath) {
-                        writer.println(result.relativePaths.stream()
-                                .map(p -> new File(sourceRepoPath, p).getAbsolutePath())
-                                .collect(Collectors.joining(File.pathSeparator)));
+                        List<String> paths = StreamUtil.map(result.relativePaths, p -> new File(sourceRepoPath, p).getAbsolutePath());
+                        if (extraClasspath != null && extraClasspath.exists()) {
+                            paths.addAll(java.nio.file.Files.readAllLines(extraClasspath.toPath()));
+                        }
+                        writer.println(String.join(File.pathSeparator, paths));
                     } else {
                         for (String path : result.relativePaths) {
                             writer.println(path);
+                        }
+                        if (extraClasspath != null && extraClasspath.exists()) {
+                            for (String extra : java.nio.file.Files.readAllLines(extraClasspath.toPath())) {
+                                writer.println(extra);
+                            }
                         }
                     }
                 }
                 getLog().info("Output written to: " + outputFile.getAbsolutePath());
             } else {
                 if (classpath) {
-                    getLog().info(result.relativePaths.stream()
-                            .map(p -> new File(sourceRepoPath, p).getAbsolutePath())
-                            .collect(Collectors.joining(File.pathSeparator)));
+                    List<String> paths = StreamUtil.map(result.relativePaths, p -> new File(sourceRepoPath, p).getAbsolutePath());
+                    if (extraClasspath != null && extraClasspath.exists()) {
+                        paths.addAll(java.nio.file.Files.readAllLines(extraClasspath.toPath()));
+                    }
+                    getLog().info(String.join(File.pathSeparator, paths));
                 } else {
                     for (String path : result.relativePaths) {
                         getLog().info(path);
+                    }
+                    if (extraClasspath != null && extraClasspath.exists()) {
+                        for (String extra : java.nio.file.Files.readAllLines(extraClasspath.toPath())) {
+                            getLog().info(extra);
+                        }
                     }
                 }
             }

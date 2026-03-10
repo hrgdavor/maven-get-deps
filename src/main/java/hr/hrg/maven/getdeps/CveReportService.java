@@ -10,15 +10,8 @@ import org.owasp.dependencycheck.exception.ExceptionCollection;
 import org.owasp.dependencycheck.utils.Settings;
 
 import java.io.File;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
@@ -61,7 +54,7 @@ public class CveReportService {
         }
 
         public boolean hasVulnerabilitiesAbove(float threshold) {
-            return vulnerabilities.stream().anyMatch(v -> v.cvssScore >= threshold);
+            return StreamUtil.any(vulnerabilities, v -> v.cvssScore >= threshold);
         }
     }
 
@@ -104,13 +97,11 @@ public class CveReportService {
         }
 
         public boolean anyVulnerable() {
-            return allResults.stream().anyMatch(r -> r.hasVulnerabilities);
+            return StreamUtil.any(allResults, r -> r.hasVulnerabilities);
         }
 
         public long transitiveVulnCount() {
-            return allResults.stream()
-                    .filter(r -> !r.coordinate.equals(directCoordinate) && r.hasVulnerabilities)
-                    .count();
+            return StreamUtil.count(allResults, r -> !r.coordinate.equals(directCoordinate) && r.hasVulnerabilities);
         }
     }
 
@@ -123,9 +114,7 @@ public class CveReportService {
         }
 
         public boolean hasAnyVulnerabilitiesAbove(float threshold) {
-            return directReports.stream()
-                    .flatMap(dr -> dr.allResults.stream())
-                    .anyMatch(r -> r.hasVulnerabilitiesAbove(threshold));
+            return StreamUtil.any(directReports, dr -> StreamUtil.any(dr.allResults, r -> r.hasVulnerabilitiesAbove(threshold)));
         }
 
         /**
@@ -274,8 +263,8 @@ public class CveReportService {
                 if (coord == null)
                     continue;
 
-                List<CveInfo> vulns = dep.getVulnerabilities().stream()
-                        .map(v -> {
+                List<CveInfo> vulns = StreamUtil.mapToSorted(dep.getVulnerabilities(),
+                        v -> {
                             String name = v.getName();
                             String url = name.startsWith("CVE-") ? "https://nvd.nist.gov/vuln/detail/" + name : null;
                             float score = 0;
@@ -285,9 +274,8 @@ public class CveReportService {
                                 score = v.getCvssV2().getCvssData().getBaseScore().floatValue();
                             }
                             return new CveInfo(name, url, score);
-                        })
-                        .sorted((a, b) -> a.id.compareTo(b.id))
-                        .toList();
+                        },
+                        (a, b) -> a.id.compareTo(b.id));
 
                 cveResultsByCoord.put(coord, new ArtifactCveResult(coord, vulns));
             }
@@ -323,9 +311,7 @@ public class CveReportService {
                 System.getProperty("user.home") + "/.m2/repository");
         List<RemoteRepository> repos = Bootstrapper.newRepositories(system, session);
 
-        List<ArtifactCveResult> vulnerableOnes = results.values().stream()
-                .filter(r -> r.hasVulnerabilities)
-                .collect(Collectors.toList());
+        List<ArtifactCveResult> vulnerableOnes = StreamUtil.filter(results.values(), r -> r.hasVulnerabilities);
 
         if (vulnerableOnes.isEmpty())
             return;
