@@ -22,6 +22,9 @@ A production-ready version folder (e.g., `/opt/md-to-odt/v1.0.0`) must be self-c
 #### Why `extra.cp.txt`?
 When deploying a project with multiple local modules, some JARs might not be available in a shared Maven repository yet. We maintain `extra.cp.txt` in the project folder to define these "extra" classpath entries. The Maven plugin then merges them with the resolved remote dependencies when generating the final `cp.txt`.
 
+ > [!NOTE] **java will ignore non-existing classpath entries**, so you can add both your jar and classes folder to classpath, then you can switch them when testing code on remote server, just make sure both are not available at the same time. It is faster to sync just classes than wait for jar to be built, if you for some reason need to iterate on something that is easier to do on a remote server than locally (some resources may be hard to get to in local env).
+
+
 ## 3. Generating the Classpath (Manual)
 If you are assembling the folder manually, you can use the `maven_get_deps` tool to generate a stable `cp.txt`.
 
@@ -245,5 +248,4 @@ sudo apt install acl
 # Apply recursive ACLs (-R) and set default ACLs (-d)
 sudo setfacl -R -m g:deploy:rwx,d:g:deploy:rwx /opt/md-to-odt
 ```
-
 
