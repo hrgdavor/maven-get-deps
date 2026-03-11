@@ -202,7 +202,6 @@ fn cmdListVersions(allocator: std.mem.Allocator, manifest_path: []const u8, args
         if (manifest.current_deployed_at) |ts| {
             std.debug.print(" - current version deployed ", .{});
             printTime(ts);
-            std.debug.print(")", .{});
         }
         std.debug.print("\n", .{});
     } else {
