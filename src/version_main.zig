@@ -54,10 +54,16 @@ fn printUsage() void {
         \\
         \\Commands:
         \\
-        \\  init [index] [link] Initialize manifest with given version index and symlink path
+        \\
+        \\  init [indices] [link] 
+        \\                      Initialize manifest with version index/indices and symlink path
+        \\                      indices: comma-separated list (default: versions.json)
+        \\                      link: symlink path (default: current)
         \\                      You should generate index first, and decide path for your symlink
         \\
-        \\  deploy <version>    Deploys a new version, and adds old to history
+        \\  deploy <version> [--force]
+        \\                      Deploys a new version, and adds old to history
+        \\                      --force: deploy even if version is marked as failed
         \\
         \\  reconcile           Ensure symlink matches manifest
         \\                      if version selection is done by external tool, or manually
@@ -74,15 +80,32 @@ fn cmdInit(allocator: std.mem.Allocator, manifest_path: []const u8, args: []cons
     // Refuse if file already exists
     std.fs.cwd().access(manifest_path, .{}) catch |err| {
         if (err == error.FileNotFound) {
-            const version_index = if (args.len > 0) args[0] else "versions.json";
+            const indices_str = if (args.len > 0) args[0] else "versions.json";
             const symlink = if (args.len > 1) args[1] else "current";
+
+            var indices_list = std.ArrayList([]const u8).empty;
+            errdefer {
+                for (indices_list.items) |idx| allocator.free(idx);
+                indices_list.deinit(allocator);
+            }
+
+            var it = std.mem.splitScalar(u8, indices_str, ',');
+            while (it.next()) |idx| {
+                if (idx.len > 0) {
+                    try indices_list.append(allocator, try allocator.dupe(u8, idx));
+                }
+            }
+
+            if (indices_list.items.len == 0) {
+                try indices_list.append(allocator, try allocator.dupe(u8, "versions.json"));
+            }
+
             const manifest = version_manager.Manifest{
-                .version_index = version_index,
+                .version_index = try indices_list.toOwnedSlice(allocator),
                 .symlink = symlink,
             };
             try manifest.save(manifest_path);
-            std.debug.print("Manifest initialized at {s} with index {s} and symlink {s}\n", .{ manifest_path, version_index, symlink });
-            _ = allocator;
+            std.debug.print("Manifest initialized at {s} with {d} indices and symlink {s}\n", .{ manifest_path, manifest.version_index.len, symlink });
             return;
         }
         return err;
@@ -98,7 +121,15 @@ fn cmdDeploy(allocator: std.mem.Allocator, manifest_path: []const u8, args: []co
         return;
     }
     const version = args[0];
-    try version_manager.deploy(allocator, manifest_path, version);
+    var force = false;
+    if (args.len > 1) {
+        for (args[1..]) |arg| {
+            if (std.mem.eql(u8, arg, "--force")) {
+                force = true;
+            }
+        }
+    }
+    try version_manager.deploy(allocator, manifest_path, version, force);
 }
 
 fn cmdReconcile(allocator: std.mem.Allocator, manifest_path: []const u8, args: []const []const u8) !void {
@@ -119,36 +150,26 @@ fn cmdListVersions(allocator: std.mem.Allocator, manifest_path: []const u8, args
     };
     defer manifest.deinit(allocator);
 
-    var index = version_manager.VersionIndex.load(allocator, manifest.version_index) catch |err| {
-        std.debug.print("Error loading index {s} (from manifest): {any}\n", .{ manifest.version_index, err });
-        return err;
-    };
-    defer index.deinit(allocator);
+    for (manifest.version_index) |idx_path| {
+        var index = version_manager.VersionIndex.load(allocator, idx_path) catch |err| {
+            std.debug.print("\nError loading index {s}: {any}\n", .{ idx_path, err });
+            continue;
+        };
+        defer index.deinit(allocator);
 
-    std.debug.print("\nAvailable versions (from {s}):\n", .{manifest.version_index});
-    for (index.versions) |entry| {
-        std.debug.print("  - {s}", .{entry.version});
-        if (entry.timestamp) |ts| {
-            std.debug.print(" [", .{});
-            printTime(ts);
-            std.debug.print("]", .{});
+        std.debug.print("\nAvailable versions from {s}:\n", .{idx_path});
+        for (index.versions) |entry| {
+            std.debug.print("  - \x1b[33m{s}\x1b[0m", .{entry.version});
+            if (entry.timestamp) |ts| {
+                std.debug.print(" [", .{});
+                printTime(ts);
+                std.debug.print("]", .{});
+            }
+            if (entry.description) |d| {
+                std.debug.print(" : {s}", .{d});
+            }
+            std.debug.print("\n", .{});
         }
-        if (entry.description) |d| {
-            std.debug.print(" : {s}", .{d});
-        }
-        std.debug.print("\n", .{});
-    }
-
-    if (manifest.current_version) |cv| {
-        std.debug.print("\nCurrent version: {s}", .{cv});
-        if (manifest.current_deployed_at) |ts| {
-            std.debug.print(" (deployed: ", .{});
-            printTime(ts);
-            std.debug.print(")", .{});
-        }
-        std.debug.print("\n", .{});
-    } else {
-        std.debug.print("\nCurrent version: None\n", .{});
     }
 
     if (manifest.history.len > 0) {
@@ -158,7 +179,7 @@ fn cmdListVersions(allocator: std.mem.Allocator, manifest_path: []const u8, args
         while (j > 0 and count < 3) {
             j -= 1;
             const entry = manifest.history[j];
-            std.debug.print("  - {s} ({s})", .{ entry.version, if (entry.failed) "FAILED" else "OK" });
+            std.debug.print("  - \x1b[36m{s}\x1b[0m ({s})", .{ entry.version, if (entry.failed) "FAILED" else "OK" });
 
             if (entry.deployed_at != null or entry.removed_at != null) {
                 std.debug.print(" [", .{});
@@ -174,6 +195,18 @@ fn cmdListVersions(allocator: std.mem.Allocator, manifest_path: []const u8, args
             std.debug.print("\n", .{});
             count += 1;
         }
+    }
+
+    if (manifest.current_version) |cv| {
+        std.debug.print("\nCurrent version: \x1b[32m{s}\x1b[0m", .{cv});
+        if (manifest.current_deployed_at) |ts| {
+            std.debug.print(" (deployed: ", .{});
+            printTime(ts);
+            std.debug.print(")", .{});
+        }
+        std.debug.print("\n", .{});
+    } else {
+        std.debug.print("\nCurrent version: None\n", .{});
     }
 
     std.debug.print("\n", .{});

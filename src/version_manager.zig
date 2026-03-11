@@ -2,7 +2,7 @@ const std = @import("std");
 
 pub const Manifest = struct {
     current_version: ?[]const u8 = null,
-    version_index: []const u8,
+    version_index: [][]const u8,
     symlink: []const u8 = "current",
     trigger_cmd: ?[]const u8 = null,
     history: []VersionHistory = &.{},
@@ -43,7 +43,10 @@ pub const Manifest = struct {
 
     fn cloneManifest(allocator: std.mem.Allocator, source: Manifest) !Manifest {
         const current_version = if (source.current_version) |cv| try allocator.dupe(u8, cv) else null;
-        const version_index = try allocator.dupe(u8, source.version_index);
+        var version_index = try allocator.alloc([]const u8, source.version_index.len);
+        for (source.version_index, 0..) |idx, i| {
+            version_index[i] = try allocator.dupe(u8, idx);
+        }
         const symlink = try allocator.dupe(u8, source.symlink);
         const trigger_cmd = if (source.trigger_cmd) |cmd| try allocator.dupe(u8, cmd) else null;
 
@@ -71,6 +74,7 @@ pub const Manifest = struct {
 
     pub fn deinit(self: *Manifest, allocator: std.mem.Allocator) void {
         if (self.current_version) |cv| allocator.free(cv);
+        for (self.version_index) |idx| allocator.free(idx);
         allocator.free(self.version_index);
         allocator.free(self.symlink);
         if (self.trigger_cmd) |cmd| allocator.free(cmd);
@@ -286,18 +290,33 @@ pub fn reconcile(allocator: std.mem.Allocator, manifest_path: []const u8) !bool 
     var manifest = try Manifest.load(allocator, manifest_path);
     defer manifest.deinit(allocator);
 
-    var index = try VersionIndex.load(allocator, manifest.version_index);
-    defer index.deinit(allocator);
+    var target_path: ?[]const u8 = null;
+    var found_at_index: ?[]const u8 = null;
 
     const target_version = manifest.current_version orelse {
         std.debug.print("No version currently active in manifest. Skipping reconciliation.\n", .{});
         return false;
     };
 
-    const target_path = index.findVersion(target_version) orelse {
-        std.debug.print("Version {s} not found in index {s}\n", .{ target_version, manifest.version_index });
+    for (manifest.version_index) |idx_path| {
+        var index = VersionIndex.load(allocator, idx_path) catch |err| {
+            std.debug.print("Warning: Failed to load index {s}: {any}\n", .{ idx_path, err });
+            continue;
+        };
+        defer index.deinit(allocator);
+
+        if (index.findVersion(target_version)) |p| {
+            target_path = try allocator.dupe(u8, p);
+            found_at_index = idx_path;
+            break;
+        }
+    }
+    defer if (target_path) |p| allocator.free(p);
+
+    if (target_path == null) {
+        std.debug.print("Version {s} not found in any indices ({any})\n", .{ target_version, manifest.version_index });
         return error.VersionNotFound;
-    };
+    }
 
     const manifest_dir = std.fs.path.dirname(manifest_path) orelse ".";
     const current_link = if (std.fs.path.isAbsolute(manifest.symlink))
@@ -316,13 +335,13 @@ pub fn reconcile(allocator: std.mem.Allocator, manifest_path: []const u8) !bool 
         return err;
     };
 
-    if (!needs_swap and !std.mem.eql(u8, real_path, target_path)) {
+    if (!needs_swap and !std.mem.eql(u8, real_path, target_path.?)) {
         needs_swap = true;
     }
 
     if (needs_swap) {
-        std.debug.print("Reconciling: Swapping {s} to {s}\n", .{ current_link, target_path });
-        try atomicSwap(allocator, current_link, target_path);
+        std.debug.print("Reconciling: Swapping {s} to {s} (from index: {s})\n", .{ current_link, target_path.?, found_at_index.? });
+        try atomicSwap(allocator, current_link, target_path.?);
         if (manifest.trigger_cmd) |cmd| {
             std.debug.print("Executing trigger: {s}\n", .{cmd});
             try runTrigger(allocator, cmd);
@@ -333,23 +352,38 @@ pub fn reconcile(allocator: std.mem.Allocator, manifest_path: []const u8) !bool 
     return false;
 }
 
-pub fn deploy(allocator: std.mem.Allocator, manifest_path: []const u8, version: []const u8) !void {
+pub fn deploy(allocator: std.mem.Allocator, manifest_path: []const u8, version: []const u8, force: bool) !void {
     var manifest = try Manifest.load(allocator, manifest_path);
     defer manifest.deinit(allocator);
 
-    var index = try VersionIndex.load(allocator, manifest.version_index);
-    defer index.deinit(allocator);
+    var version_found = false;
+    for (manifest.version_index) |idx_path| {
+        var index = VersionIndex.load(allocator, idx_path) catch continue;
+        defer index.deinit(allocator);
+        if (index.findVersion(version)) |_| {
+            version_found = true;
+            break;
+        }
+    }
 
-    _ = index.findVersion(version) orelse {
-        std.debug.print("Version {s} not found in index {s}\n", .{ version, manifest.version_index });
+    if (!version_found) {
+        std.debug.print("Version {s} not found in any indices ({any})\n", .{ version, manifest.version_index });
         return error.VersionNotFound;
-    };
+    }
 
-    // Check if version is marked as failed
-    for (manifest.history) |item| {
-        if (item.failed and std.mem.eql(u8, item.version, version)) {
-            std.debug.print("Error: Version {s} is marked as failed in history.\n", .{version});
-            return error.VersionFailed;
+    // Check if version is marked as failed (only look at the latest entry for this version)
+    if (!force) {
+        var i: usize = manifest.history.len;
+        while (i > 0) {
+            i -= 1;
+            const item = manifest.history[i];
+            if (std.mem.eql(u8, item.version, version)) {
+                if (item.failed) {
+                    std.debug.print("Error: The most recent record for version {s} in history is marked as FAILED. Use --force to deploy anyway.\n", .{version});
+                    return error.VersionFailed;
+                }
+                break;
+            }
         }
     }
 
@@ -426,9 +460,9 @@ pub fn upgradeFailed(allocator: std.mem.Allocator, manifest_path: []const u8) !v
 
     std.debug.print("Marking {?s} as failed and reverting to {s}...\n", .{ failed_version, revert_version });
 
-    // New history: history[0..len-1] + failed_version
-    var new_history = try allocator.alloc(Manifest.VersionHistory, manifest.history.len);
-    for (manifest.history[0 .. manifest.history.len - 1], 0..) |item, i| {
+    // New history: copy all existing + append failed_version
+    var new_history = try allocator.alloc(Manifest.VersionHistory, manifest.history.len + 1);
+    for (manifest.history, 0..) |item, i| {
         new_history[i] = .{
             .version = try allocator.dupe(u8, item.version),
             .timestamp = item.timestamp,
@@ -438,7 +472,8 @@ pub fn upgradeFailed(allocator: std.mem.Allocator, manifest_path: []const u8) !v
             .removed_at = item.removed_at,
         };
     }
-    new_history[manifest.history.len - 1] = .{
+
+    new_history[manifest.history.len] = .{
         .version = if (failed_version) |fv| try allocator.dupe(u8, fv) else try allocator.dupe(u8, "unknown"),
         .timestamp = now,
         .comment = try std.fmt.allocPrint(allocator, "Failed, reverted to {s}", .{revert_version}),

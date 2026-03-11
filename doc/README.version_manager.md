@@ -8,7 +8,7 @@ The manifest is the source of truth for an application's deployment state.
 ```json
 {
   "current_version": "1.2.4",
-  "version_index": "versions.json",
+  "version_index": ["versions.json", "archive.json"],
   "symlink": "current",
   "trigger_cmd": "systemctl restart my-app",
   "history": [
@@ -26,7 +26,7 @@ The manifest is the source of truth for an application's deployment state.
 ```
 
 - `current_version`: The ID of the version that *should* be active.
-- `version_index`: Path to the index file listing physical locations of each version.
+- `version_index`: Array of paths to index files (or a single string for backward compatibility with load).
 - `symlink`: (Optional) The path to the symlink that points to the current version. Default is "current". Can be absolute or relative to the manifest.
 - `trigger_cmd`: (Optional) Shell command executed only when a version swap actually occurs.
 - `history`: (Automatic) Log of previous deployment actions.
@@ -39,17 +39,18 @@ The manifest is the source of truth for an application's deployment state.
 ### 1. init
 Initializes a new manifest file.
 ```sh
-./version_manager app-manifest.json init [versions.json] [current]
+./version_manager app-manifest.json init [indices] [symlink]
 ```
--   `[versions.json]`: (Optional) The path to the version index file. Defaults to `versions.json`.
--   `[current]`: (Optional) The symlink path. Defaults to `current`.
+-   `[indices]`: (Optional) Comma-separated list of index files. Defaults to `versions.json`.
+-   `[symlink]`: (Optional) The symlink path. Defaults to `current`.
 
 ### 2. deploy
 Deploys a new version by updating the manifest and preparing for a symlink swap.
 ```sh
-./version_manager app-manifest.json deploy 1.2.4
+./version_manager app-manifest.json deploy <version> [--force]
 ```
--   `1.2.4`: The version ID to set as current. Must exist in the version index.
+-   `<version>`: The version ID to deploy. Must exist in the version index.
+-   `--force`: (Optional) Deploy even if the version is marked as failed in history.
 
 ### 3. reconcile
 Ensures the `current` symlink matches the version specified in the manifest.
