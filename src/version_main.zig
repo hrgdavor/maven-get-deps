@@ -35,6 +35,10 @@ pub fn main() !void {
         try cmdDeploy(allocator, manifest_path, cmd_args);
     } else if (std.mem.eql(u8, command, "reconcile")) {
         try cmdReconcile(allocator, manifest_path, cmd_args);
+    } else if (std.mem.eql(u8, command, "current-name")) {
+        try cmdCurrentName(allocator, manifest_path, cmd_args);
+    } else if (std.mem.eql(u8, command, "current-path")) {
+        try cmdCurrentPath(allocator, manifest_path, cmd_args);
     } else if (std.mem.eql(u8, command, "upgrade-failed")) {
         try cmdUpgradeFailed(allocator, manifest_path, cmd_args);
     } else if (std.mem.eql(u8, command, "list")) {
@@ -55,11 +59,9 @@ fn printUsage() void {
         \\Commands:
         \\
         \\
-        \\  init [indices] [link] 
-        \\                      Initialize manifest with version index/indices and symlink path
-        \\                      indices: comma-separated list (default: versions.json)
-        \\                      link: symlink path (default: current)
-        \\                      You should generate index first, and decide path for your symlink
+        \\  current-name        Output current version name (raw)
+        \\
+        \\  current-path        Output real path of current version (raw)
         \\
         \\  deploy <version> [--force]
         \\                      Deploys a new version, and adds old to history
@@ -69,6 +71,12 @@ fn printUsage() void {
         \\                      if version selection is done by external tool, or manually
         \\
         \\  upgrade-failed      Revert to previous version and mark current as failed
+        \\
+        \\  init [indices] [link] 
+        \\                      Initialize manifest with version index/indices and symlink path
+        \\                      indices: comma-separated list (default: versions.json)
+        \\                      link: symlink path (default: current)
+        \\                      You should generate index first, and decide path for your symlink
         \\
         \\  list                List available and recently used versions
         \\
@@ -149,7 +157,41 @@ fn cmdListVersions(allocator: std.mem.Allocator, manifest_path: []const u8, args
         return err;
     };
     defer manifest.deinit(allocator);
+    cmdListVersionsPrint(allocator, manifest);
+}
 
+fn cmdCurrentName(allocator: std.mem.Allocator, manifest_path: []const u8, args: []const []const u8) !void {
+    _ = args;
+    var manifest = try version_manager.Manifest.load(allocator, manifest_path);
+    defer manifest.deinit(allocator);
+
+    if (manifest.current_version) |cv| {
+        std.debug.print("{s}\n", .{cv});
+    } else {
+        std.debug.print("None\n", .{});
+    }
+}
+
+fn cmdCurrentPath(allocator: std.mem.Allocator, manifest_path: []const u8, args: []const []const u8) !void {
+    _ = args;
+    var manifest = try version_manager.Manifest.load(allocator, manifest_path);
+    defer manifest.deinit(allocator);
+
+    const cv = manifest.current_version orelse {
+        std.debug.print("Error: No version currently active.\n", .{});
+        return;
+    };
+
+    const path = try manifest.findVersionPath(allocator, cv) orelse {
+        std.debug.print("Error: Path for version {s} not found.\n", .{cv});
+        return;
+    };
+    defer allocator.free(path);
+
+    std.debug.print("{s}\n", .{path});
+}
+
+fn cmdListVersionsPrint(allocator: std.mem.Allocator, manifest: version_manager.Manifest) void {
     for (manifest.version_index) |idx_path| {
         var index = version_manager.VersionIndex.load(allocator, idx_path) catch |err| {
             std.debug.print("\nError loading index {s}: {any}\n", .{ idx_path, err });

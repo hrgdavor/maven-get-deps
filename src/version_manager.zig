@@ -30,17 +30,6 @@ pub const Manifest = struct {
         return try cloneManifest(allocator, parsed.value);
     }
 
-    pub fn save(self: Manifest, path: []const u8) !void {
-        const file = try std.fs.cwd().createFile(path, .{});
-        defer file.close();
-
-        var out_buf: [4096]u8 = undefined;
-        var writer_struct = file.writer(&out_buf);
-        const writer = &writer_struct.interface;
-        try std.json.Stringify.value(self, .{ .whitespace = .indent_2 }, writer);
-        try writer.flush();
-    }
-
     fn cloneManifest(allocator: std.mem.Allocator, source: Manifest) !Manifest {
         const current_version = if (source.current_version) |cv| try allocator.dupe(u8, cv) else null;
         var version_index = try allocator.alloc([]const u8, source.version_index.len);
@@ -70,6 +59,34 @@ pub const Manifest = struct {
             .history = history,
             .current_deployed_at = source.current_deployed_at,
         };
+    }
+
+    pub fn save(self: Manifest, path: []const u8) !void {
+        const file = try std.fs.cwd().createFile(path, .{});
+        defer file.close();
+
+        var out_buf: [4096]u8 = undefined;
+        var writer_struct = file.writer(&out_buf);
+        const writer = &writer_struct.interface;
+        try std.json.Stringify.value(self, .{ .whitespace = .indent_2 }, writer);
+        try writer.flush();
+    }
+
+    /// Finds the path for a given version by searching all indices.
+    /// Caller owns the returned memory.
+    pub fn findVersionPath(self: Manifest, allocator: std.mem.Allocator, version: []const u8) !?[]const u8 {
+        for (self.version_index) |idx_path| {
+            var index = VersionIndex.load(allocator, idx_path) catch |err| {
+                std.debug.print("Warning: Failed to load index {s}: {any}\n", .{ idx_path, err });
+                continue;
+            };
+            defer index.deinit(allocator);
+
+            if (index.findVersion(version)) |p| {
+                return try allocator.dupe(u8, p);
+            }
+        }
+        return null;
     }
 
     pub fn deinit(self: *Manifest, allocator: std.mem.Allocator) void {
@@ -290,33 +307,16 @@ pub fn reconcile(allocator: std.mem.Allocator, manifest_path: []const u8) !bool 
     var manifest = try Manifest.load(allocator, manifest_path);
     defer manifest.deinit(allocator);
 
-    var target_path: ?[]const u8 = null;
-    var found_at_index: ?[]const u8 = null;
-
     const target_version = manifest.current_version orelse {
         std.debug.print("No version currently active in manifest. Skipping reconciliation.\n", .{});
         return false;
     };
 
-    for (manifest.version_index) |idx_path| {
-        var index = VersionIndex.load(allocator, idx_path) catch |err| {
-            std.debug.print("Warning: Failed to load index {s}: {any}\n", .{ idx_path, err });
-            continue;
-        };
-        defer index.deinit(allocator);
-
-        if (index.findVersion(target_version)) |p| {
-            target_path = try allocator.dupe(u8, p);
-            found_at_index = idx_path;
-            break;
-        }
-    }
-    defer if (target_path) |p| allocator.free(p);
-
-    if (target_path == null) {
+    const target_path_val = try manifest.findVersionPath(allocator, target_version) orelse {
         std.debug.print("Version {s} not found in any indices ({any})\n", .{ target_version, manifest.version_index });
         return error.VersionNotFound;
-    }
+    };
+    defer allocator.free(target_path_val);
 
     const manifest_dir = std.fs.path.dirname(manifest_path) orelse ".";
     const current_link = if (std.fs.path.isAbsolute(manifest.symlink))
@@ -335,13 +335,13 @@ pub fn reconcile(allocator: std.mem.Allocator, manifest_path: []const u8) !bool 
         return err;
     };
 
-    if (!needs_swap and !std.mem.eql(u8, real_path, target_path.?)) {
+    if (!needs_swap and !std.mem.eql(u8, real_path, target_path_val)) {
         needs_swap = true;
     }
 
     if (needs_swap) {
-        std.debug.print("Reconciling: Swapping {s} to {s} (from index: {s})\n", .{ current_link, target_path.?, found_at_index.? });
-        try atomicSwap(allocator, current_link, target_path.?);
+        std.debug.print("Reconciling: Swapping {s} to {s}\n", .{ current_link, target_path_val });
+        try atomicSwap(allocator, current_link, target_path_val);
         if (manifest.trigger_cmd) |cmd| {
             std.debug.print("Executing trigger: {s}\n", .{cmd});
             try runTrigger(allocator, cmd);
@@ -355,21 +355,6 @@ pub fn reconcile(allocator: std.mem.Allocator, manifest_path: []const u8) !bool 
 pub fn deploy(allocator: std.mem.Allocator, manifest_path: []const u8, version: []const u8, force: bool) !void {
     var manifest = try Manifest.load(allocator, manifest_path);
     defer manifest.deinit(allocator);
-
-    var version_found = false;
-    for (manifest.version_index) |idx_path| {
-        var index = VersionIndex.load(allocator, idx_path) catch continue;
-        defer index.deinit(allocator);
-        if (index.findVersion(version)) |_| {
-            version_found = true;
-            break;
-        }
-    }
-
-    if (!version_found) {
-        std.debug.print("Version {s} not found in any indices ({any})\n", .{ version, manifest.version_index });
-        return error.VersionNotFound;
-    }
 
     // Check if version is marked as failed (only look at the latest entry for this version)
     if (!force) {
@@ -389,9 +374,16 @@ pub fn deploy(allocator: std.mem.Allocator, manifest_path: []const u8, version: 
 
     if (manifest.current_version) |cv| {
         if (std.mem.eql(u8, cv, version)) {
-            std.debug.print("Version {s} already active. Reconciling anyway...\n", .{version});
+            std.debug.print("Version {s} is already current.\n", .{version});
+            return;
         }
     }
+
+    const target_path = try manifest.findVersionPath(allocator, version) orelse {
+        std.debug.print("Version {s} not found in any indices.\n", .{version});
+        return error.VersionNotFound;
+    };
+    defer allocator.free(target_path);
 
     // Update manifest
     const now = std.time.timestamp();

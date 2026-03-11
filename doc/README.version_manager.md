@@ -61,7 +61,19 @@ Ensures the `current` symlink matches the version specified in the manifest.
 #### Atomic Symlink Swaps
 When `reconcile` (or `deploy`) detects a version mismatch, it atomically replaces the `current` symlink using a temporary link and the `rename` syscall.
 
-### 4. upgrade-failed
+### 4. current-name
+Outputs the currently active version name (raw string for scripting).
+```sh
+./version_manager app-manifest.json current-name
+```
+
+### 5. current-path
+Outputs the resolved filesystem path for the currently active version (raw string for scripting).
+```sh
+./version_manager app-manifest.json current-path
+```
+
+### 6. upgrade-failed
 Reverts to the previous stable version if a new deployment is found to be unstable.
 ```sh
 ./version_manager app-manifest.json upgrade-failed
