@@ -56,25 +56,26 @@ jobs:
         with:
           version: '0.15.2'
 
-      - name: Build Zig (Windows x64)
-        run: zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-windows
+      - name: Create release-artifacts directory
+        run: mkdir -p release-artifacts
 
-      - name: Package Zig Windows x64
+      - name: Build Zig (Windows x64)
         run: |
-          zip ../../release-artifacts/maven-get-deps-zig-windows-x64.zip maven_get_deps.exe
-          zip ../../release-artifacts/version-manager-zig-windows-x64.zip version_manager.exe
-          zip ../../release-artifacts/gen-index-zig-windows-x64.zip gen_index.exe
+          zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-windows
+          zip release-artifacts/maven-get-deps-zig-windows-x64.zip zig-out/bin/maven_get_deps.exe
+          zip release-artifacts/version-manager-zig-windows-x64.zip zig-out/bin/version_manager.exe
+          zip release-artifacts/gen-index-zig-windows-x64.zip zig-out/bin/gen_index.exe
 
       - name: Build Zig (Linux x64)
-        run: zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux
-
+        run: |
+          zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux
           tar -czf release-artifacts/maven-get-deps-zig-linux-x64.tar.gz -C zig-out/bin maven_get_deps
           tar -czf release-artifacts/version-manager-zig-linux-x64.tar.gz -C zig-out/bin version_manager
           tar -czf release-artifacts/gen-index-zig-linux-x64.tar.gz -C zig-out/bin gen_index
 
       - name: Build Zig (Linux ARM64)
-        run: zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-linux
-
+        run: |
+          zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-linux
           tar -czf release-artifacts/maven-get-deps-zig-linux-arm64.tar.gz -C zig-out/bin maven_get_deps
           tar -czf release-artifacts/version-manager-zig-linux-arm64.tar.gz -C zig-out/bin version_manager
           tar -czf release-artifacts/gen-index-zig-linux-arm64.tar.gz -C zig-out/bin gen_index
