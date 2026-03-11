@@ -1,6 +1,5 @@
 const std = @import("std");
 const deps_format = @import("deps_format.zig");
-const version_manager = @import("version_manager.zig");
 
 pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -17,14 +16,6 @@ pub fn main() !void {
     const command = args[1];
     if (std.mem.eql(u8, command, "deps")) {
         try cmdDeps(allocator, args[2..]);
-    } else if (std.mem.eql(u8, command, "deploy")) {
-        try cmdDeploy(allocator, args[2..]);
-    } else if (std.mem.eql(u8, command, "reconcile")) {
-        try cmdReconcile(allocator, args[2..]);
-    } else if (std.mem.eql(u8, command, "upgrade-failed")) {
-        try cmdUpgradeFailed(allocator, args[2..]);
-    } else if (std.mem.eql(u8, command, "gen-index")) {
-        try cmdGenIndex(allocator, args[2..]);
     } else if (std.mem.eql(u8, command, "--help") or std.mem.eql(u8, command, "-h")) {
         printUsage();
         return;
@@ -44,9 +35,6 @@ fn printUsage() void {
         \\
         \\Commands:
         \\  deps            Resolve Maven dependencies (default if --input is first)
-        \\  deploy          Deploy a new version
-        \\  reconcile       Ensure symlink matches manifest
-        \\  upgrade-failed  Revert to previous version and mark current as failed
         \\
         \\Deps Options:
         \\  --input <file>              Input file
@@ -55,21 +43,6 @@ fn printUsage() void {
         \\  --classpath                 Output as classpath string
         \\  --extra-classpath <file>    Append extra entries
         \\  --cache <dir>               Local repo path
-        \\
-        \\Deploy Options:
-        \\  --version <v>               Version to deploy
-        \\  --manifest <file>           Manifest file path (default: manifest.json)
-        \\
-        \\Reconcile Options:
-        \\  --manifest <file>           Manifest file path (default: manifest.json)
-        \\
-        \\Upgrade-Failed Options:
-        \\  --manifest <file>           Manifest file path (default: manifest.json)
-        \\
-        \\Gen-Index Options:
-        \\  --folders <file>            File containing list of folders to scan
-        \\  --output <file>             Output index file path (default: versions.json)
-        \\  --version-file <name>       Version file name to look for (default: version.json)
         \\
     , .{});
 }
@@ -240,60 +213,6 @@ fn cmdDeps(allocator: std.mem.Allocator, args: []const []const u8) !void {
     printUsage();
 }
 
-fn cmdDeploy(allocator: std.mem.Allocator, args: []const []const u8) !void {
-    var version: ?[]const u8 = null;
-    var manifest_path: []const u8 = "manifest.json";
-
-    var i: usize = 0;
-    while (i < args.len) : (i += 1) {
-        const arg = args[i];
-        if (std.mem.eql(u8, arg, "--version")) {
-            i += 1;
-            if (i < args.len) version = args[i];
-        } else if (std.mem.eql(u8, arg, "--manifest")) {
-            i += 1;
-            if (i < args.len) manifest_path = args[i];
-        }
-    }
-
-    if (version == null) {
-        std.debug.print("Error: Missing --version for 'deploy' command\n", .{});
-        return;
-    }
-
-    try version_manager.deploy(allocator, manifest_path, version.?);
-}
-
-fn cmdReconcile(allocator: std.mem.Allocator, args: []const []const u8) !void {
-    var manifest_path: []const u8 = "manifest.json";
-
-    var i: usize = 0;
-    while (i < args.len) : (i += 1) {
-        const arg = args[i];
-        if (std.mem.eql(u8, arg, "--manifest")) {
-            i += 1;
-            if (i < args.len) manifest_path = args[i];
-        }
-    }
-
-    _ = try version_manager.reconcile(allocator, manifest_path);
-}
-
-fn cmdUpgradeFailed(allocator: std.mem.Allocator, args: []const []const u8) !void {
-    var manifest_path: []const u8 = "manifest.json";
-
-    var i: usize = 0;
-    while (i < args.len) : (i += 1) {
-        const arg = args[i];
-        if (std.mem.eql(u8, arg, "--manifest")) {
-            i += 1;
-            if (i < args.len) manifest_path = args[i];
-        }
-    }
-
-    try version_manager.upgradeFailed(allocator, manifest_path);
-}
-
 fn downloadFile(client: *std.http.Client, url: []const u8, dest_path: []const u8) !void {
     const uri = try std.Uri.parse(url);
 
@@ -327,51 +246,4 @@ fn downloadFile(client: *std.http.Client, url: []const u8, dest_path: []const u8
 
     _ = try reader.streamRemaining(writer);
     try writer.flush();
-}
-
-fn cmdGenIndex(allocator: std.mem.Allocator, args: []const []const u8) !void {
-    var folders_file: ?[]const u8 = null;
-    var output_file: []const u8 = "versions.json";
-    var version_file_name: []const u8 = "version.json";
-
-    var i: usize = 0;
-    while (i < args.len) : (i += 1) {
-        const arg = args[i];
-        if (std.mem.eql(u8, arg, "--folders")) {
-            i += 1;
-            if (i < args.len) {
-                folders_file = args[i];
-            } else {
-                std.debug.print("Missing value for {s}\n", .{arg});
-                std.process.exit(1);
-            }
-        } else if (std.mem.eql(u8, arg, "--output") or std.mem.eql(u8, arg, "-o")) {
-            i += 1;
-            if (i < args.len) {
-                output_file = args[i];
-            } else {
-                std.debug.print("Missing value for {s}\n", .{arg});
-                std.process.exit(1);
-            }
-        } else if (std.mem.eql(u8, arg, "--version-file")) {
-            i += 1;
-            if (i < args.len) {
-                version_file_name = args[i];
-            } else {
-                std.debug.print("Missing value for {s}\n", .{arg});
-                std.process.exit(1);
-            }
-        }
-    }
-
-    const ff = folders_file orelse {
-        std.debug.print("Error: --folders <file> is required for gen-index\n", .{});
-        std.process.exit(1);
-    };
-
-    var index = try version_manager.generateIndex(allocator, ff, version_file_name);
-    defer index.deinit(allocator);
-
-    try index.save(output_file);
-    std.debug.print("Version index generated and saved to {s}\n", .{output_file});
 }

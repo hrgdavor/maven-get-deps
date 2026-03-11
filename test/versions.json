@@ -1,0 +1,22 @@
+{
+  "versions": [
+    {
+      "version": "1.0.0",
+      "path": "/path/to/v1.0.0",
+      "timestamp": 1710150000,
+      "description": "Initial version"
+    },
+    {
+      "version": "1.1.0",
+      "path": "/path/to/v1.1.0",
+      "timestamp": 1710151000,
+      "description": "Bug fixes"
+    },
+    {
+      "version": "1.2.0",
+      "path": "/path/to/v1.2.0",
+      "timestamp": 1710152000,
+      "description": "New features"
+    }
+  ]
+}
