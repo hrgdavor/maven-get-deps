@@ -198,9 +198,9 @@ fn cmdListVersions(allocator: std.mem.Allocator, manifest_path: []const u8, args
     }
 
     if (manifest.current_version) |cv| {
-        std.debug.print("\nCurrent version: \x1b[32m{s}\x1b[0m", .{cv});
+        std.debug.print("\n\x1b[32m{s}\x1b[0m", .{cv});
         if (manifest.current_deployed_at) |ts| {
-            std.debug.print(" (deployed: ", .{});
+            std.debug.print(" - current version deployed ", .{});
             printTime(ts);
             std.debug.print(")", .{});
         }
