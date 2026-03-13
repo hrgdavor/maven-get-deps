@@ -1,6 +1,9 @@
-# get_deps: Dependency Resolution (Zig Edition)
+# get_deps: Path Resolution & Download (Zig Edition)
 
-The `get_deps` tool is an ultra-fast, zero-dependency implementation written in Zig. It focuses on the most critical deployment tasks: resolution, artifact management, and classpath generation. It can not resolve transitive dependences, you need to solve that step during build with maven.
+The `get_deps` tool is an ultra-fast, zero-dependency implementation written in Zig. It focuses on the most critical deployment tasks: **path resolution**, **filling missing artifacts** in the local cache, and classpath generation. 
+
+> [!IMPORTANT]
+> **No Transitive Expansion**: The Zig version does not resolve transitive dependencies. It expects a list of already-resolved dependencies (e.g., from a POM or a text file) and converts them into filesystem paths, downloading any missing JARs along the way if pesent in maven central. You must perform transitive expansion during your build step using the Java implementation.
 
 ## Usage
 

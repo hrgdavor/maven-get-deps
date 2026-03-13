@@ -10,11 +10,16 @@ This project contains a set of utilities that work together
 
 **get_deps** (maven plugin, executable jar, native app)
 
-- expand dependencies to include transient dependencies
-- fill local maven cache with missing dependencies
-- copy dependencies to separate folder
-- generate classpath file (newline delimited)
-- generate classpath suitable for enviroment CLASSPATH variable to simplify running java code
+- [Java Only] expand dependencies to include transitive dependencies
+- [Zig/Java] fill local maven cache with missing dependencies
+- [Zig/Java] copy dependencies to separate folder
+- [Zig/Java] generate classpath file (newline delimited)
+- [Zig/Java] generate classpath suitable for environment CLASSPATH variable to simplify running java code
+
+**cve12**
+
+- Focused CLI tool for CVE scanning using OWASP Dependency-Check v12.
+- No OWASP dependency in the main `maven-get-deps` tool.
 
 **version_manager**
 
@@ -28,15 +33,16 @@ This project contains a set of utilities that work together
 - generate index of available versions (one sample way here to get you started, that you can change to suit your needs)
 
 
-| Guide | Description |
-|---|---|
-| [maven_get_deps (Java)](doc/README.maven_get_deps.md) | The original implementation: Java CLI, Maven Plugin, Size Reporting, transitive deps expansion, and CVE Scanning. |
-| [get_deps (Zig Edition)](doc/README.get_deps.md) | Ultra-fast Zig implementation of the core path resolution logic. Recommended for production runtimes. |
-| [Deployment & Shared Library](doc/README.usage-deploy.md) | Deploy thin JARs + a shared dep folder. Avoid fat JARs entirely. |
-| [Systemd Daemon Guide](doc/README.systemd.md) | Deploy a Java daemon with `systemd` and atomic versioning. |
-| [Classpath Generation](doc/README.usage-classpath.md) | Generate `CLASSPATH` from a dep file or `pom.xml`. Includes multi-module `--extra-classpath` guide. |
-| [CVE Vulnerability Scanning](doc/README.usage-cve.md) | Offline CVE scanning with OWASP, CI/CD build-breaking, and clean version search. |
-| [Dependency Size Reporting](doc/README.usage-report.md) | Analyze artifact bloat with incremental size attribution. |
+| Guide | Description | Download |
+|---|---|---|
+| **[Download Guide](doc/README.download.md)** | **Central location for latest releases and examples.** | [View All](doc/README.download.md) |
+| [maven_get_deps (Java)](doc/README.maven_get_deps.md) | The original implementation: Java CLI, Maven Plugin, Size Reporting, and **transitive expansion**. | [Download](doc/README.download.md#java-maven_get_deps) |
+| [get_deps (Zig Edition)](doc/README.get_deps.md) | Ultra-fast Zig implementation for **path resolution and artifact downloads**. | [Download](doc/README.download.md#zig-get_deps) |
+| [cve12 Scanner](doc/README.usage-cve.md) | Focused tool for **CVE Vulnerability Scanning** using OWASP v12. | [Download](doc/README.download.md#java-cve12) |
+| [Deployment & Shared Library](doc/README.usage-deploy.md) | Deploy thin JARs + a shared dep folder. Avoid fat JARs entirely. | [N/A] |
+| [Systemd Daemon Guide](doc/README.systemd.md) | Deploy a Java daemon with `systemd` and atomic versioning. | [N/A] |
+| [Classpath Generation](doc/README.usage-classpath.md) | Generate `CLASSPATH` from a dep file or `pom.xml`. | [N/A] |
+| [Dependency Size Reporting](doc/README.usage-report.md) | Analyze artifact bloat with incremental size attribution. | [N/A] |
 | [Zig Binary Guide](doc/README.zig.md) | Ultra-fast, zero-dependency binary. Deployment philosophy, SDKMAN!, JVM-vs-container. |
 | [Docker Integration (Dynamic)](doc/README.docker.md) | Thin Docker images with a shared Maven cache. Includes K8s InitContainer pattern. |
 | [Docker Integration (Static)](doc/README.static-docker.md) | Bake a fixed classpath into Docker at build time. Most secure, zero runtime tools. |

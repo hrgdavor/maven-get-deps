@@ -11,10 +11,7 @@ import java.io.File;
 import java.io.PrintWriter;
 import java.util.List;
 import java.util.Set;
-import hr.hrg.maven.getdeps.FormatConverter;
-import hr.hrg.maven.getdeps.DependencyFormatInfo;
-import java.util.Map;
-import java.util.HashMap;
+import java.util.ArrayList;
 
 public class Main {
 
@@ -32,18 +29,9 @@ public class Main {
             // ignore
         }
         VERSION = version;
-
-        // Silence OWASP console output by default
-        if (System.getProperty("org.slf4j.simpleLogger.log.org.owasp") == null) {
-            System.setProperty("org.slf4j.simpleLogger.log.org.owasp", "warn");
-        }
     }
 
     public static void main(String[] args) {
-        // Fix for Lucene on Java 21+ (and GraalVM 25)
-        if (System.getProperty("org.apache.lucene.store.MMapDirectory.enableMemorySegments") == null) {
-            System.setProperty("org.apache.lucene.store.MMapDirectory.enableMemorySegments", "false");
-        }
 
         Options options = new Options();
         options.addOption("v", "version", false, "Show version");
@@ -76,20 +64,6 @@ public class Main {
         options.addOption(new Option("ecp", "extra-classpath", true,
                 "Path to a file containing additional classpath entries (one per line) to append."));
 
-        options.addOption(new Option("cr", "cve-report", true,
-                "CVE report output file (queries local OWASP H2 database, default path used if --cve-data omitted)"));
-        options.addOption(new Option("cd", "cve-data", true,
-                "Path to the OWASP Dependency-Check H2 database directory (default: ~/.m2/dependency-check-data)"));
-        options.addOption(new Option("cu", "cve-update", false,
-                "Download / update the OWASP CVE database into the --cve-data directory and exit"));
-        options.addOption(new Option("nk", "nvd-api-key", true,
-                "NVD API key for higher rate limits during --cve-update (see https://nvd.nist.gov/developers/request-an-api-key)"));
-        options.addOption(new Option("cv", "cve-check-versions", false,
-                "For vulnerable dependencies, search for the nearest clean version (requires network to fetch version list)"));
-        options.addOption(new Option("nd", "nvd-api-delay", true,
-                "Delay in milliseconds between NVD API requests during --cve-update (default: handled by OWASP)"));
-        options.addOption(new Option("ct", "cve-severity-threshold", true,
-                "CVSS severity threshold (0.0 to 10.0). If any CVE meets/exceeds this, the tool exits with code 1 (default: 8.0)"));
         options.addOption(new Option("ex", "exclude-cp", true,
                 "Comma-separated list of artifact IDs (G:A) or relative paths to exclude from the classpath."));
 
@@ -149,60 +123,12 @@ public class Main {
 
             String destDir = cmd.getOptionValue("dest-dir");
             String reportPath = cmd.getOptionValue("report");
-            String cveReportPath = cmd.getOptionValue("cve-report");
-
-            String defaultCveData = System.getProperty("user.home") + "/.m2/dependency-check-data";
-            String cveDataDir = cmd.hasOption("cve-data") ? cmd.getOptionValue("cve-data") : defaultCveData;
 
             File pomFile = artifactCoords != null || inputPath != null ? null : new File(pomPath);
-            DependencyResolverService service = new DependencyResolverService();
-
-            if (cmd.hasOption("cve-update")) {
-                String nvdApiKey = cmd.getOptionValue("nvd-api-key");
-                String nvdApiDelay = cmd.getOptionValue("nvd-api-delay");
-                CveReportService.updateDatabase(cveDataDir, nvdApiKey, nvdApiDelay);
-                return;
-            }
-
-            if (cveReportPath != null) {
-                // Generate CVE report
-                Map<String, List<String>> deps;
-                if (inputPath != null) {
-                    System.out.println("[CVE] Reading dependencies from: " + inputPath);
-                    deps = DependencyResolverService.readPerDepFromFile(inputPath);
-                } else if (artifactCoords != null) {
-                    System.out.println("[CVE] Resolving dependencies for: " + artifactCoords);
-                    deps = service.resolvePerDepForArtifact(artifactCoords, scopesStr, cachePath);
-                } else {
-                    System.out.println("[CVE] Resolving dependencies from: " + pomPath);
-                    deps = service.resolvePerDep(pomFile, scopesStr, cachePath);
-                }
-
-                boolean checkVersions = cmd.hasOption("cve-check-versions");
-                String nvdApiDelay = cmd.getOptionValue("nvd-api-delay");
-                CveReportService.CveReportResult cveResult = CveReportService.scan(cveDataDir, deps, checkVersions, nvdApiDelay);
-                String report = cveResult.formatMarkdownReport();
-                java.nio.file.Files.writeString(java.nio.file.Path.of(cveReportPath), report);
-                System.out.println("CVE report written to: " + cveReportPath);
-
-                float threshold = Float.parseFloat(cmd.getOptionValue("cve-severity-threshold", "8.0"));
-                if (cveResult.hasAnyVulnerabilitiesAbove(threshold)) {
-                    System.err.println("[CVE] High-severity vulnerabilities found! Breaking build.");
-                    System.exit(1);
-                }
-
-                // If we ONLY wanted a CVE report, exit now.
-                // We check if other output options are missing.
-                boolean hasOtherOutputs = outputPath != null || reportPath != null
-                        || (cmd.hasOption("dest-dir") && !cmd.hasOption("no-copy"));
-                if (!hasOtherOutputs) {
-                    return;
-                }
-            }
 
             run(destDir, pomPath, artifactCoords, inputPath, outputPath, reportPath, cachePath, scopesStr, copyJars,
                     classpathMode,
-                    cveReportPath, cveDataDir, extraClasspathFile, excludes, cmd.getOptionValue("nvd-api-delay"));
+                    extraClasspathFile, excludes);
 
         } catch (ParseException e) {
             System.out.println(e.getMessage());
@@ -218,7 +144,7 @@ public class Main {
             String reportPath,
             String cachePath,
             String scopesStr, boolean copyJars, boolean classpathMode,
-            String cveReportPath, String cveDataDir, String extraClasspathFile, String excludes, String nvdApiDelay) throws Exception {
+            String extraClasspathFile, String excludes) throws Exception {
 
         Model model;
         RepositorySystem system = Bootstrapper.newRepositorySystem();
@@ -325,20 +251,6 @@ public class Main {
             System.out.println("Size report written to: " + reportPath);
         }
 
-        if (cveReportPath != null) {
-            if (cveDataDir == null) {
-                System.err.println("[CVE] --cve-data is required when using --cve-report");
-            } else {
-                java.util.LinkedHashMap<String, List<String>> perDep = DependencyResolverService.resolvePerDep(
-                        system, session, repos, model.getDependencies(),
-                        Main::resolveProperty, model, scopes, excludeSet);
-                CveReportService.CveReportResult cveResult = CveReportService.scan(cveDataDir, perDep, false, nvdApiDelay);
-                try (PrintWriter writer = new PrintWriter(new File(cveReportPath))) {
-                    writer.print(cveResult.formatMarkdownReport());
-                }
-                System.out.println("CVE report written to: " + cveReportPath);
-            }
-        }
 
         System.out.println("Total size: " + result.totalSize + " bytes");
     }

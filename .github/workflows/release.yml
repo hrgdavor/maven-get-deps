@@ -25,7 +25,10 @@ jobs:
           native-image-job-reports: 'true'
 
       - name: Build with Maven
-        run: mvn clean package -Pexecutable -Pnative -DskipTests
+        run: |
+          mvn install -f cve-common/pom.xml
+          mvn package -f cve12/pom.xml -DskipTests
+          mvn clean package -Pexecutable -Pnative -DskipTests
 
       - name: Prepare Artifacts
         shell: bash
@@ -33,10 +36,13 @@ jobs:
           mkdir -p release-artifacts
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             7z a release-artifacts/maven-get-deps-windows-x64.zip ./target/maven-get-deps.exe
+            7z a release-artifacts/cve12-windows-x64.zip ./cve12/target/cve12.exe
           else
             tar -czf release-artifacts/maven-get-deps-linux-x64.tar.gz -C target maven-get-deps
+            tar -czf release-artifacts/cve12-linux-x64.tar.gz -C cve12/target cve12
             cp target/maven-get-deps-*-cli.jar release-artifacts/maven-get-deps-cli.jar
           fi
+          cp cve12/target/cve12-*-cli.jar release-artifacts/cve12-cli.jar
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
@@ -62,21 +68,21 @@ jobs:
       - name: Build Zig (Windows x64)
         run: |
           zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-windows
-          zip release-artifacts/maven-get-deps-zig-windows-x64.zip zig-out/bin/maven_get_deps.exe
+          zip release-artifacts/get-deps-zig-windows-x64.zip zig-out/bin/get_deps.exe
           zip release-artifacts/version-manager-zig-windows-x64.zip zig-out/bin/version_manager.exe
           zip release-artifacts/gen-index-zig-windows-x64.zip zig-out/bin/gen_index.exe
 
       - name: Build Zig (Linux x64)
         run: |
           zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux
-          tar -czf release-artifacts/maven-get-deps-zig-linux-x64.tar.gz -C zig-out/bin maven_get_deps
+          tar -czf release-artifacts/get-deps-zig-linux-x64.tar.gz -C zig-out/bin get_deps
           tar -czf release-artifacts/version-manager-zig-linux-x64.tar.gz -C zig-out/bin version_manager
           tar -czf release-artifacts/gen-index-zig-linux-x64.tar.gz -C zig-out/bin gen_index
 
       - name: Build Zig (Linux ARM64)
         run: |
           zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-linux
-          tar -czf release-artifacts/maven-get-deps-zig-linux-arm64.tar.gz -C zig-out/bin maven_get_deps
+          tar -czf release-artifacts/get-deps-zig-linux-arm64.tar.gz -C zig-out/bin get_deps
           tar -czf release-artifacts/version-manager-zig-linux-arm64.tar.gz -C zig-out/bin version_manager
           tar -czf release-artifacts/gen-index-zig-linux-arm64.tar.gz -C zig-out/bin gen_index
 
