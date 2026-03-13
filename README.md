@@ -92,18 +92,8 @@ For a detailed guide on setting this up, see **[doc/README.usage-deploy.md](doc/
 
 ## Download
 
-Get the latest binaries from the [GitHub Releases](https://github.com/hrgdavor/maven-get-deps/releases/latest).
-
-| Category | Artifacts | Description |
-|---|---|---|
-| **Java Suite** | `maven-get-deps-cli.jar`<br>`cve12-cli.jar` | Platform-independent CLI JARs (JRE 17+). |
-| **Native (Windows)** | `maven-get-deps-windows-x64.zip`<br>`cve12-windows-x64.zip` | GraalVM native images for instant startup. |
-| **Native (Linux)** | `maven-get-deps-linux-x64.tar.gz`<br>`cve12-linux-x64.tar.gz` | GraalVM native images (x64). |
-| **Zig Utils** | `get-deps-zig-*`<br>`version-manager-zig-*`<br>`gen-index-zig-*` | Ultra-fast binaries for Linux (x64/ARM64) and Windows. |
-
-> For detailed installation steps and copy-paste examples, see the **[Download Guide](doc/README.download.md)**.
-
----
+**[Click here to generate custom download commands](https://hrgdavor.github.io/maven-get-deps/download.html) based on your tool and platform or 
+get the latest binaries from the [GitHub Releases](https://github.com/hrgdavor/maven-get-deps/releases/latest) or from 
 
 ---
 
