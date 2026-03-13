@@ -36,6 +36,19 @@ Keep the database current by scheduling `--cve-update` as a recurring task:
 schtasks /create /tn "CVE DB Update" /tr "java -jar C:\tools\maven-get-deps-cli.jar --cve-update" /sc daily /st 03:00
 ```
 
+#### Update Cron Job (Linux / macOS)
+```bash
+# Update every Sunday at 3 AM with an API key and a 5-second delay to be safe
+0 3 * * 0 /path/to/maven-get-deps --cve-update --nvd-api-key YOUR_KEY --nvd-api-delay 5000 --cve-data /var/lib/owasp-data
+```
+
+| Parameter | Description |
+|---|---|
+| `--cve-update` | Trigger the data download and exit. |
+| `--nvd-api-key` | [Optional] API key for higher rate limits. |
+| `--nvd-api-delay` | [Optional] Delay in milliseconds between NVD API requests. |
+| `--cve-data` | Path to the directory for the H2 database. |
+
 ---
 
 ## Automated Maintenance (Dummy POM & Cron)
@@ -173,16 +186,57 @@ If no CVEs meet the threshold, the tool exits with **code 0**. Otherwise, it pri
 
 ## Using OWASP Directly (without built-in scan)
 
-For projects using the OWASP Maven plugin directly, you can configure it to run faster by skipping JAR analysis and relying on Maven's dependency graph (PURL-only lookup):
+Running the OWASP Dependency-Check plugin directly within your project gives you the most control over the scanning process. This approach is highly efficient when combined with a pre-populated local database, as it skips expensive remote API calls and relies on local H2 data.
+
+In CI/CD environments, the default `${user.home}/.m2/dependency-check-data` might be inaccessible or non-persistent. You can override the database directory on the command line using the `-DdataDirectory` property:
+
+```bash
+mvn dependency-check:check -DdataDirectory=/opt/shared/cve-db
+```
+
+For projects using the plugin directly, you can configure it for maximum speed by disabling remote lookup:
 
 ```xml
 <configuration>
-    <autoUpdate>false</autoUpdate>
+    <failBuildOnCVSS>7</failBuildOnCVSS>
+    <suppressionFile>./pom.verify.supress</suppressionFile>
+    <!-- ~/ will not work corss platform, but maven has builting variable for this purpose -->
     <dataDirectory>${user.home}/.m2/dependency-check-data</dataDirectory>
-    <!-- Skip slow file analysis -->
-    <archiveAnalyzerEnabled>false</archiveAnalyzerEnabled>
-    <jarAnalyzerEnabled>false</jarAnalyzerEnabled>
-    <!-- Rely strictly on Maven coordinates (very fast) -->
-    <centralAnalyzerEnabled>true</centralAnalyzerEnabled>
+
+    <!-- KEEP LOCAL: Stop remote API calls -->
+    <autoUpdate>false</autoUpdate>
+    <ossindexAnalyzerEnabled>false</ossindexAnalyzerEnabled>
+    <centralAnalyzerEnabled>false</centralAnalyzerEnabled>
+    <nexusAnalyzerEnabled>false</nexusAnalyzerEnabled>
+
+    <!-- enable the engines that find dependencies -->
+    <jarAnalyzerEnabled>true</jarAnalyzerEnabled>
+    <archiveAnalyzerEnabled>true</archiveAnalyzerEnabled>
 </configuration>
+```
+
+# TIPS
+
+Check path that is bringing your dependency into the project
+
+```sh
+mvn dependency:tree -Dverbose -Dincludes=org.apache.commons:commons-lang3
+```
+
+## dependency management
+
+Instead of hunting for exclusions, use dependency management to define forced version (in parent pom if multi-module).
+
+```xml
+<!-- security override due to old version in some deps that we can not move up -->
+<dependencyManagement>
+    <dependencies>
+        <!-- Force the newer commons-lang3 version globally -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
+            <version>3.18.0</version>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
 ```

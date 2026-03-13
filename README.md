@@ -30,6 +30,8 @@ This project contains a set of utilities that work together
 
 | Guide | Description |
 |---|---|
+| [maven_get_deps (Java)](doc/README.maven_get_deps.md) | The original implementation: Java CLI, Maven Plugin, Size Reporting, transitive deps expansion, and CVE Scanning. |
+| [get_deps (Zig Edition)](doc/README.get_deps.md) | Ultra-fast Zig implementation of the core path resolution logic. Recommended for production runtimes. |
 | [Deployment & Shared Library](doc/README.usage-deploy.md) | Deploy thin JARs + a shared dep folder. Avoid fat JARs entirely. |
 | [Systemd Daemon Guide](doc/README.systemd.md) | Deploy a Java daemon with `systemd` and atomic versioning. |
 | [Classpath Generation](doc/README.usage-classpath.md) | Generate `CLASSPATH` from a dep file or `pom.xml`. Includes multi-module `--extra-classpath` guide. |

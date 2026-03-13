@@ -241,6 +241,16 @@
                     <artifactId>dependency-check-core</artifactId>
                     <version>12.2.0</version>
                 </dependency>
+                <dependency>
+                    <groupId>org.apache.httpcomponents.client5</groupId>
+                    <artifactId>httpclient5</artifactId>
+                    <version>5.5.1</version>
+                </dependency>
+                <dependency>
+                    <groupId>org.apache.commons</groupId>
+                    <artifactId>commons-jcs3-core</artifactId>
+                    <version>3.2.1</version>
+                </dependency>
                 <!-- H2 JDBC driver (required by dependency-check-core) -->
                 <dependency>
                     <groupId>com.h2database</groupId>

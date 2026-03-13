@@ -184,17 +184,29 @@ public class CveReportService {
     public static CveReportResult scan(
             String dataDirectory,
             Map<String, List<String>> directDepsWithTransitives) throws Exception {
-        return scan(dataDirectory, directDepsWithTransitives, false);
+        return scan(dataDirectory, directDepsWithTransitives, false, null);
     }
 
     public static CveReportResult scan(
             String dataDirectory,
             Map<String, List<String>> directDepsWithTransitives,
             boolean checkCleanVersions) throws Exception {
+        return scan(dataDirectory, directDepsWithTransitives, checkCleanVersions, null);
+    }
+
+    public static CveReportResult scan(
+            String dataDirectory,
+            Map<String, List<String>> directDepsWithTransitives,
+            boolean checkCleanVersions,
+            String nvdApiDelay) throws Exception {
 
         Settings settings = new Settings();
         settings.setString(Settings.KEYS.DATA_DIRECTORY, dataDirectory);
         settings.setBoolean(Settings.KEYS.AUTO_UPDATE, false);
+
+        if (nvdApiDelay != null && !nvdApiDelay.isBlank()) {
+            settings.setString(Settings.KEYS.NVD_API_DELAY, nvdApiDelay);
+        }
 
         // Essential analyzers for coordinate-based CVE lookup
         settings.setBoolean(Settings.KEYS.ANALYZER_CENTRAL_ENABLED, true);
@@ -413,6 +425,10 @@ public class CveReportService {
         return dep.getName() + ":" + dep.getVersion();
     }
 
+    public static void updateDatabase(String dataDirectory, String nvdApiKey) throws Exception {
+        updateDatabase(dataDirectory, nvdApiKey, null);
+    }
+
     /**
      * Downloads / updates the local OWASP Dependency-Check H2 database.
      * Suitable for scheduling as a cron job or Windows Task Scheduler entry.
@@ -421,8 +437,10 @@ public class CveReportService {
      *                      (default: {@code ~/.m2/dependency-check-data})
      * @param nvdApiKey     optional NVD API key for higher rate limits; may be
      *                      {@code null}
+     * @param nvdApiDelay   optional delay in milliseconds between NVD API requests; may be
+     *                      {@code null}
      */
-    public static void updateDatabase(String dataDirectory, String nvdApiKey) throws Exception {
+    public static void updateDatabase(String dataDirectory, String nvdApiKey, String nvdApiDelay) throws Exception {
         System.out.println("[CVE] Updating database in: " + dataDirectory);
         java.nio.file.Files.createDirectories(java.nio.file.Path.of(dataDirectory));
 
@@ -431,6 +449,9 @@ public class CveReportService {
         settings.setBoolean(Settings.KEYS.AUTO_UPDATE, true);
         if (nvdApiKey != null && !nvdApiKey.isBlank()) {
             settings.setString(Settings.KEYS.NVD_API_KEY, nvdApiKey);
+        }
+        if (nvdApiDelay != null && !nvdApiDelay.isBlank()) {
+            settings.setString(Settings.KEYS.NVD_API_DELAY, nvdApiDelay);
         }
         // Disable all analyzers — we only want data download, not scanning
         settings.setBoolean(Settings.KEYS.ANALYZER_ARCHIVE_ENABLED, false);

@@ -6,7 +6,7 @@ The Zig version of `maven-get-deps` consists of three ultra-fast, zero-dependenc
 
 ### 1. get_deps
 Focused on dependency resolution, classpath generation, and artifact downloading.
-- [Usage & Examples](README.get_deps.md)
+- [Usage & Examples](README.get_deps.md) (Zig version) / [Java version](README.maven_get_deps.md)
 
 ### 2. version_manager
 Focused on zero-downtime application updates via atomic symlink swaps and version tracking.

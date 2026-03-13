@@ -1,6 +1,6 @@
-# get_deps: Dependency Resolution
+# get_deps: Dependency Resolution (Zig Edition)
 
-The `get_deps` tool is focused on fast dependency resolution, artifacts management, and classpath generation.
+The `get_deps` tool is an ultra-fast, zero-dependency implementation written in Zig. It focuses on the most critical deployment tasks: resolution, artifact management, and classpath generation. It can not resolve transitive dependences, you need to solve that step during build with maven.
 
 ## Usage
 

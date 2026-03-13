@@ -86,6 +86,8 @@ public class Main {
                 "NVD API key for higher rate limits during --cve-update (see https://nvd.nist.gov/developers/request-an-api-key)"));
         options.addOption(new Option("cv", "cve-check-versions", false,
                 "For vulnerable dependencies, search for the nearest clean version (requires network to fetch version list)"));
+        options.addOption(new Option("nd", "nvd-api-delay", true,
+                "Delay in milliseconds between NVD API requests during --cve-update (default: handled by OWASP)"));
         options.addOption(new Option("ct", "cve-severity-threshold", true,
                 "CVSS severity threshold (0.0 to 10.0). If any CVE meets/exceeds this, the tool exits with code 1 (default: 8.0)"));
         options.addOption(new Option("ex", "exclude-cp", true,
@@ -157,7 +159,8 @@ public class Main {
 
             if (cmd.hasOption("cve-update")) {
                 String nvdApiKey = cmd.getOptionValue("nvd-api-key");
-                CveReportService.updateDatabase(cveDataDir, nvdApiKey);
+                String nvdApiDelay = cmd.getOptionValue("nvd-api-delay");
+                CveReportService.updateDatabase(cveDataDir, nvdApiKey, nvdApiDelay);
                 return;
             }
 
@@ -176,7 +179,8 @@ public class Main {
                 }
 
                 boolean checkVersions = cmd.hasOption("cve-check-versions");
-                CveReportService.CveReportResult cveResult = CveReportService.scan(cveDataDir, deps, checkVersions);
+                String nvdApiDelay = cmd.getOptionValue("nvd-api-delay");
+                CveReportService.CveReportResult cveResult = CveReportService.scan(cveDataDir, deps, checkVersions, nvdApiDelay);
                 String report = cveResult.formatMarkdownReport();
                 java.nio.file.Files.writeString(java.nio.file.Path.of(cveReportPath), report);
                 System.out.println("CVE report written to: " + cveReportPath);
@@ -198,7 +202,7 @@ public class Main {
 
             run(destDir, pomPath, artifactCoords, inputPath, outputPath, reportPath, cachePath, scopesStr, copyJars,
                     classpathMode,
-                    cveReportPath, cveDataDir, extraClasspathFile, excludes);
+                    cveReportPath, cveDataDir, extraClasspathFile, excludes, cmd.getOptionValue("nvd-api-delay"));
 
         } catch (ParseException e) {
             System.out.println(e.getMessage());
@@ -214,7 +218,7 @@ public class Main {
             String reportPath,
             String cachePath,
             String scopesStr, boolean copyJars, boolean classpathMode,
-            String cveReportPath, String cveDataDir, String extraClasspathFile, String excludes) throws Exception {
+            String cveReportPath, String cveDataDir, String extraClasspathFile, String excludes, String nvdApiDelay) throws Exception {
 
         Model model;
         RepositorySystem system = Bootstrapper.newRepositorySystem();
@@ -328,7 +332,7 @@ public class Main {
                 java.util.LinkedHashMap<String, List<String>> perDep = DependencyResolverService.resolvePerDep(
                         system, session, repos, model.getDependencies(),
                         Main::resolveProperty, model, scopes, excludeSet);
-                CveReportService.CveReportResult cveResult = CveReportService.scan(cveDataDir, perDep);
+                CveReportService.CveReportResult cveResult = CveReportService.scan(cveDataDir, perDep, false, nvdApiDelay);
                 try (PrintWriter writer = new PrintWriter(new File(cveReportPath))) {
                     writer.print(cveResult.formatMarkdownReport());
                 }
