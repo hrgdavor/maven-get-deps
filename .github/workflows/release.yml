@@ -11,7 +11,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -37,6 +37,9 @@ jobs:
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
             7z a release-artifacts/maven-get-deps-windows-x64.zip ./target/maven-get-deps.exe
             7z a release-artifacts/cve12-windows-x64.zip ./cve12/target/cve12.exe
+          elif [ "${{ matrix.os }}" = "macos-latest" ]; then
+            tar -czf release-artifacts/maven-get-deps-macos-x64.tar.gz -C target maven-get-deps
+            tar -czf release-artifacts/cve12-macos-x64.tar.gz -C cve12/target cve12
           else
             tar -czf release-artifacts/maven-get-deps-linux-x64.tar.gz -C target maven-get-deps
             tar -czf release-artifacts/cve12-linux-x64.tar.gz -C cve12/target cve12
@@ -68,9 +71,9 @@ jobs:
       - name: Build Zig (Windows x64)
         run: |
           zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-windows
-          zip release-artifacts/get-deps-zig-windows-x64.zip zig-out/bin/get_deps.exe
-          zip release-artifacts/version-manager-zig-windows-x64.zip zig-out/bin/version_manager.exe
-          zip release-artifacts/gen-index-zig-windows-x64.zip zig-out/bin/gen_index.exe
+          zip -j release-artifacts/get-deps-zig-windows-x64.zip zig-out/bin/get_deps.exe
+          zip -j release-artifacts/version-manager-zig-windows-x64.zip zig-out/bin/version_manager.exe
+          zip -j release-artifacts/gen-index-zig-windows-x64.zip zig-out/bin/gen_index.exe
 
       - name: Build Zig (Linux x64)
         run: |
@@ -85,6 +88,20 @@ jobs:
           tar -czf release-artifacts/get-deps-zig-linux-arm64.tar.gz -C zig-out/bin get_deps
           tar -czf release-artifacts/version-manager-zig-linux-arm64.tar.gz -C zig-out/bin version_manager
           tar -czf release-artifacts/gen-index-zig-linux-arm64.tar.gz -C zig-out/bin gen_index
+
+      - name: Build Zig (macOS x64)
+        run: |
+          zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-macos
+          tar -czf release-artifacts/get-deps-zig-macos-x64.tar.gz -C zig-out/bin get_deps
+          tar -czf release-artifacts/version-manager-zig-macos-x64.tar.gz -C zig-out/bin version_manager
+          tar -czf release-artifacts/gen-index-zig-macos-x64.tar.gz -C zig-out/bin gen_index
+
+      - name: Build Zig (macOS ARM64)
+        run: |
+          zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-macos
+          tar -czf release-artifacts/get-deps-zig-macos-arm64.tar.gz -C zig-out/bin get_deps
+          tar -czf release-artifacts/version-manager-zig-macos-arm64.tar.gz -C zig-out/bin version_manager
+          tar -czf release-artifacts/gen-index-zig-macos-arm64.tar.gz -C zig-out/bin gen_index
 
       - name: Upload Zig Artifacts
         uses: actions/upload-artifact@v4

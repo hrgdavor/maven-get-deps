@@ -15,6 +15,7 @@ Built for deep analysis and Maven ecosystem integration.
     - Full **transitive dependency expansion**.
     - Dependency **size reporting** with incremental attribution.
     - Classpath generation (`.txt`, `.sh`, `.bat`).
+    - **Copy dependencies** to a separate folder.
     - Local Maven cache filling (downloading missing artifacts).
 - **cve12** (Focused CLI)
     - Vulnerability scanning using **OWASP Dependency-Check v12**.
@@ -26,7 +27,7 @@ Native binaries with zero dependencies, optimized for production runtime usage.
 
 - **get_deps**
     - Instant path resolution and classpath generation.
-    - Synchronizes/fills local Maven cache from remote repositories.
+    - Local Maven cache filling (downloading missing artifacts).
 - **version_manager**
     - Zero-downtime deployment via **atomic symlink swaps**.
     - Maintains version history and revert markers.
@@ -34,6 +35,8 @@ Native binaries with zero dependencies, optimized for production runtime usage.
     - Simple metadata generator for deployment versioning, that can be used as is, or as a reference to make your own.
 
 ---
+
+> **[NEW] Interactive Download Guide**: [Click here to generate custom download commands](https://hrgdavor.github.com/maven-get-deps/download.html) based on your tool and platform.
 
 <a name="guide-summary"></a>
 
@@ -60,12 +63,6 @@ Native binaries with zero dependencies, optimized for production runtime usage.
 ## Why
 
 This whole toolset started from looking to deploy a Java app to a remote server. You need your classes **and** all of your dependencies to start your app there. Usually, this means copying dependencies to a `lib/` folder alongside your JAR, or even worse, creating fat JARs. I find that surrender to bloat unacceptable.
-
-- [Java Only] expand dependencies to include transitive dependencies
-- [Java Only] copy dependencies to separate folder (same structure as maven repository)
-- [Zig/Java] fill local maven cache with missing dependencies (same structure as maven repository)
-- [Zig/Java] generate classpath file (newline delimited)
-- [Zig/Java] generate classpath suitable for environment CLASSPATH variable to simplify running java code
 
 With frameworks like Spring bloat and Hibernate, even a moderately sized app — say **500 KB** of *your* code — can carry **50–100 MB** of dependencies. That's a **200× size difference** every time you deploy a new version. And it gets worse with microservices: each service has less code but the same pile of libraries.
 

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Download maven-get-deps Tools</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Tool Downloads</h1>
+            <p>Select your platform and tool implementation to get installation commands.</p>
+        </header>
+
+        <main>
+            <!-- Platform Tabs at the top -->
+            <nav class="platform-tabs" id="platform-tabs">
+                <!-- Tabs will be injected here -->
+            </nav>
+
+            <div class="tab-content">
+                <section class="tool-table-section">
+                    <table class="tool-table">
+                        <thead>
+                            <tr>
+                                <th>Tool</th>
+                                <th>Description</th>
+                                <th class="actions-col">Select Implementation</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tool-table-body">
+                            <!-- Rows will be injected here -->
+                        </tbody>
+                    </table>
+                </section>
+
+                <section class="command-section">
+                    <div class="command-header">
+                        <h2>Installation Commands</h2>
+                        <div class="command-actions">
+                            <a id="download-link" title="Direct Download" target="_blank">Download Artifact</a>
+                            <button id="copy-btn" class="secondary-btn">Copy to Clipboard</button>
+                        </div>
+                    </div>
+                    <div class="terminal">
+                        <pre><code id="command-output"># Select an implementation from the table to see commands...</code></pre>
+                    </div>
+                </section>
+            </div>
+        </main>
+
+        <footer>
+            <p>Latest version automatically fetched from <a href="https://github.com/hrgdavor/maven-get-deps/releases/latest" target="_blank">GitHub Releases</a>.</p>
+        </footer>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
