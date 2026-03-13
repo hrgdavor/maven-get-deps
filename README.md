@@ -1,19 +1,31 @@
 # maven-get-deps
 
-Available in multiple enviroments for flexibility so you can do some of the tasks without maven or java installed.
+Started as set of tools for managing java dependencies. Then expanded to also simplify/streamline deployment of an application to a linux server using systemd with management of runtime versions using symlinks, and tracking whene version was active(deployed,replaced).
 
-Mave repository is the backbone of java dependency mamagement regardless if you use `mvn`, `gradle`, `mvnd`, `ivy` ... And the [format that reliably maps artifact definition to folder name](doc/MAVEN_LAYOUT.md) in any maven repository is a great asset to working with java dependencies. The tools here follow that convention making the process compatible with your existing `~/.m2/repository` and maven central.
+Available for multiple enviroments so you can be flexible to do some of the tasks even without maven or java installed. Version management tool is zig app compiled as native executable that can be used independently from this project. Or at least you can manage your java backend and frontend versioning with this same tool.
+
+> Maven repository is the backbone of java dependency mamagement regardless if you use `mvn`, `gradle`, `mvnd`, `ivy` ... And the [format that reliably maps artifact definition to folder name](doc/MAVEN_LAYOUT.md) in any maven repository is a great asset to working with java dependencies. The tools here follow that convention making the process compatible with your existing `~/.m2/repository` and maven central.
 
 This project contains a set of utilities that work together
+
+**get_deps** (maven plugin, executable jar, native app)
 
 - expand dependencies to include transient dependencies
 - fill local maven cache with missing dependencies
 - copy dependencies to separate folder
 - generate classpath file (newline delimited)
 - generate classpath suitable for enviroment CLASSPATH variable to simplify running java code
+
+**version_manager**
+
+- manage version deploy/revert 
+- keeps version history with time and marker if it was reverted
+- deploy will validate version from index file to avoid typo breaking deployment(stopping old instance and failing the new one)
+
+
+**gen_index** native tool you can use if you have not yet decided on own way to collect versions
+
 - generate index of available versions (one sample way here to get you started, that you can change to suit your needs)
-- manage version upgrade/revert and keeping version history
-  - upgrade will validate version from index file to avoid typo breaking deployment(stopping old instance and failing the new one)
 
 
 | Guide | Description |

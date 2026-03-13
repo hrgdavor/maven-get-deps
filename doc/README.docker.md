@@ -23,12 +23,12 @@ FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 
 # Copy the Zig tool and dependency list
-COPY target/maven_get_deps /usr/local/bin/
+COPY target/get_deps /usr/local/bin/
 COPY dependencies.txt .
 COPY target/my-app.jar .
 
 # Use a startup script to generate CLASSPATH on the fly
-CMD CP_STRING=$(maven_get_deps -i dependencies.txt -cf path --classpath --cache /root/.m2/repository) && \
+CMD CP_STRING=$(get_deps -i dependencies.txt -cf path --classpath --cache /root/.m2/repository) && \
     export CLASSPATH="my-app.jar:$CP_STRING" && \
     java com.example.Main
 ```
@@ -46,7 +46,7 @@ In environments where the container has internet access, you can allow the Zig t
 ```dockerfile
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
-COPY target/maven_get_deps /usr/local/bin/
+COPY target/get_deps /usr/local/bin/
 COPY dependencies.txt .
 COPY target/my-app.jar .
 
@@ -60,10 +60,10 @@ ENTRYPOINT ["./entrypoint.sh"]
 ```sh
 #!/bin/sh
 # 1. Download missing jars into the mounted cache volume
-maven_get_deps -i dependencies.txt --download --cache /data/maven-cache
+get_deps -i dependencies.txt --download --cache /data/maven-cache
 
 # 2. Generate classpath
-CP_STRING=$(maven_get_deps -i dependencies.txt -cf path --classpath --cache /data/maven-cache)
+CP_STRING=$(get_deps -i dependencies.txt -cf path --classpath --cache /data/maven-cache)
 
 # 3. Exec java
 export CLASSPATH="my-app.jar:$CP_STRING"
@@ -98,7 +98,7 @@ spec:
       args:
         - |
           # The dependencies.txt would be provided via ConfigMap or inside the image
-          /usr/local/bin/maven_get_deps --input /app/dependencies.txt --download --cache /data/cache
+          /usr/local/bin/get_deps --input /app/dependencies.txt --download --cache /data/cache
   
   containers:
     - name: my-java-app
@@ -114,7 +114,7 @@ spec:
       args:
         - |
           # Generate CP string using the Zig tool (also included in the app image)
-          CP=$(/usr/local/bin/maven_get_deps -i /app/dependencies.txt -cf path --classpath --cache /data/cache)
+          CP=$(/usr/local/bin/get_deps -i /app/dependencies.txt -cf path --classpath --cache /data/cache)
           export CLASSPATH="/app/my-app.jar:$CP"
           exec java $JAVA_OPTS com.example.Main
 ```

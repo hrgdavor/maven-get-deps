@@ -33,8 +33,62 @@ Keep the database current by scheduling `--cve-update` as a recurring task:
 ```
 
 ```powershell
-# Windows Task Scheduler (daily)
 schtasks /create /tn "CVE DB Update" /tr "java -jar C:\tools\maven-get-deps-cli.jar --cve-update" /sc daily /st 03:00
+```
+
+---
+
+## Automated Maintenance (Dummy POM & Cron)
+
+Using a "dummy" Maven project is the most reliable way to maintain your CVE database. It ensures the database format matches exactly what the `dependency-check-maven` plugin expects, and it's easy to automate with `cron`.
+
+### 1. Simple Dummy `pom.xml`
+
+Create a file named `pom-cve-update.xml`. This POM doesn't need any actual dependencies, just the plugin configuration.
+
+```xml
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>hr.hrg.maven</groupId>
+    <artifactId>cve-updater</artifactId>
+    <version>1.0</version>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.owasp</groupId>
+                <artifactId>dependency-check-maven</artifactId>
+                <version>12.1.0</version> <!-- Use the version you want to maintain -->
+                <configuration>
+                    <nvdApiKey>${env.NVD_API_KEY}</nvdApiKey>
+                    <dataDirectory>${env.CVE_DATA_DIR}</dataDirectory>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+```
+
+### 2. Cron Setup (Linux/macOS)
+
+You can maintain one or more database versions by running `mvn` in a cron job. Setting the `CVE_DATA_DIR` and `NVD_API_KEY` environment variables ensures the update goes to the right place securely.
+
+```bash
+# Edit your crontab with: crontab -e
+
+# Update the main DB daily at 04:00
+0 4 * * * export NVD_API_KEY="your-key-here"; export CVE_DATA_DIR="$HOME/.m2/dependency-check-data"; mvn -f /path/to/pom-cve-update.xml dependency-check:update
+```
+
+### 3. Transitioning / Multiple Versions
+
+If you are upgrading to a new version of OWASP Dependency-Check that requires a different database schema, you can maintain both during the transition:
+
+```bash
+# Update legacy version (11.x)
+0 3 * * * export CVE_DATA_DIR="/opt/cve/db-v11"; mvn -f /opt/cve/pom-v11.xml dependency-check:update
+
+# Update new version (12.x)
+0 4 * * * export CVE_DATA_DIR="/opt/cve/db-v12"; mvn -f /opt/cve/pom-v12.xml dependency-check:update
 ```
 
 ---
@@ -124,7 +178,7 @@ For projects using the OWASP Maven plugin directly, you can configure it to run 
 ```xml
 <configuration>
     <autoUpdate>false</autoUpdate>
-    <dataDirectory>/path/to/shared/h2</dataDirectory>
+    <dataDirectory>${user.home}/.m2/dependency-check-data</dataDirectory>
     <!-- Skip slow file analysis -->
     <archiveAnalyzerEnabled>false</archiveAnalyzerEnabled>
     <jarAnalyzerEnabled>false</jarAnalyzerEnabled>

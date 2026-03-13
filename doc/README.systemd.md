@@ -26,11 +26,11 @@ When deploying a project with multiple local modules, some JARs might not be ava
 
 
 ## 3. Generating the Classpath (Manual)
-If you are assembling the folder manually, you can use the `maven_get_deps` tool to generate a stable `cp.txt`.
+If you are assembling the folder manually, you can use the `get_deps` tool to generate a stable `cp.txt`.
 
 ```bash
 # Example: Generate the classpath for the md-to-odt module
-./maven_get_deps deps -i md-to-odt/pom.xml --extra-classpath md-to-odt/extra.cp.txt --classpath > /opt/md-to-odt/v1.0.0/cp.txt
+./get_deps deps -i md-to-odt/pom.xml --extra-classpath md-to-odt/extra.cp.txt --classpath > /opt/md-to-odt/v1.0.0/cp.txt
 ```
 
 ## 4. Automated Staging
@@ -100,7 +100,7 @@ WorkingDirectory=/opt/md-to-odt
 
 # 1. Dynamically generate the full CLASSPATH from the version's cp.txt
 #    Note: 'current' is our atomic symlink. We include the app jar itself.
-ExecStartPre=/bin/sh -c 'echo "CLASSPATH=current/md-to-odt.jar:$(./maven_get_deps -i current/cp.txt --classpath --cache /opt/shared/m2)" > /run/md-to-odt.env'
+ExecStartPre=/bin/sh -c 'echo "CLASSPATH=current/md-to-odt.jar:$(./get_deps -i current/cp.txt --classpath --cache /opt/shared/m2)" > /run/md-to-odt.env'
 
 # 2. Load the environment variable and start the JVM
 #    - CLASSPATH: automatically picked up, keeps 'ps' output clean.
@@ -152,11 +152,11 @@ In modern Linux distributions, `/run` is a **`tmpfs`** (a virtual filesystem in 
 - **Volatility**: It is automatically cleared on reboot. This ensures that no "stale" classpath from a previous system state is ever used.
 
 ### How it is generated (`ExecStartPre`)
-`ExecStartPre` runs *before* the main service starts. We use a short shell command to capture the output of `maven_get_deps`:
+`ExecStartPre` runs *before* the main service starts. We use a short shell command to capture the output of `get_deps`:
 ```ini
-ExecStartPre=/bin/sh -c 'echo "CLASSPATH=current/md-to-odt.jar:$(./maven_get_deps -i current/cp.txt --classpath --cache /opt/shared/m2)" > /run/md-to-odt.env'
+ExecStartPre=/bin/sh -c 'echo "CLASSPATH=current/md-to-odt.jar:$(./get_deps -i current/cp.txt --classpath --cache /opt/shared/m2)" > /run/md-to-odt.env'
 ```
-- The Zig version of `maven_get_deps` resolves the classpath from `current/cp.txt` in milliseconds.
+- The Zig version of `get_deps` resolves the classpath from `current/cp.txt` in milliseconds.
 - The shell (`/bin/sh`) performs the command substitution `$(...)`.
 - The result is written as a standard `KEY=VALUE` pair into the file.
 
@@ -177,8 +177,8 @@ With this setup, upgrading to a new version is safe and atomic:
 1.  **Prepare**: Use `stage-deploy` (see section 4) to generate a new version folder (e.g., `v1.1.0/`).
 2.  **Config**: Ensure `logback.xml` is present in `/opt/md-to-odt/`.
 3.  **Upload**: Copy the version folder to `/opt/md-to-odt/v1.1.0/`.
-4.  **Index**: Run `./maven_get_deps gen-index --folders /opt/md-to-odt --output versions.json`.
-5.  **Deploy**: Run `./maven_get_deps deploy --version v1.1.0`.
+4.  **Index**: Run `./get_deps gen-index --folders /opt/md-to-odt --output versions.json`.
+5.  **Deploy**: Run `./get_deps deploy --version v1.1.0`.
 
 The `deploy` command updates `manifest.json`, which updates the `current` symlink atomically and triggers the service restart.
 

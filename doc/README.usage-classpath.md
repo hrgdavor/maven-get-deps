@@ -46,7 +46,7 @@ This is the primary deployment pattern. Your app ships with a pre-generated `dep
 mvn hr.hrg:maven-get-deps:get-deps -DoutputFile=dependencies.txt
 
 # Assemble CLASSPATH at startup (using Zig binary for speed)
-CP=$(maven_get_deps -i dependencies.txt -cf path --classpath --cache /opt/shared/lib)
+CP=$(get_deps -i dependencies.txt -cf path --classpath --cache /opt/shared/lib)
 export CLASSPATH="myapp.jar:$CP"
 exec java com.example.Main
 ```
@@ -67,7 +67,7 @@ Use `--extra-classpath <file>` to append additional entries to the generated CLA
 
 ```bash
 # Resolve external deps and merge in the local module JARs
-CP=$(maven_get_deps -i web-module/dependencies.txt -cf path --classpath \
+CP=$(get_deps -i web-module/dependencies.txt -cf path --classpath \
      --cache /opt/shared/lib \
      --extra-classpath local_modules.txt)
 
@@ -119,7 +119,7 @@ For ultra-fast classpath generation (e.g., in startup scripts where milliseconds
 
 ```bash
 # ~5ms vs ~300ms for the Java CLI
-maven_get_deps -i dependencies.txt -cf path --classpath --cache /opt/shared/lib
+get_deps -i dependencies.txt -cf path --classpath --cache /opt/shared/lib
 ```
 
 See [README.zig.md](README.zig.md) for full details on the Zig binary.

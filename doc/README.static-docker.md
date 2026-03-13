@@ -22,7 +22,7 @@ mvn hr.hrg:maven-get-deps-plugin:get-deps -Doutput=dependencies.txt
 
 # Generate the static classpath string
 # (Assumes dependencies are in /libs inside the container)
-maven_get_deps -i dependencies.txt -cf path --classpath --cache /libs > static_cp.txt
+get_deps -i dependencies.txt -cf path --classpath --cache /libs > static_cp.txt
 ```
 
 **Dockerfile:**
@@ -58,7 +58,7 @@ Imagine a project with:
 **2. Generate combined classpath at build time:**
 ```bash
 # Resolve external deps from one of the modules
-maven_get_deps -i web/dependencies.txt -cf path --classpath --cache /libs --extra-classpath local_modules.txt > full_cp.txt
+get_deps -i web/dependencies.txt -cf path --classpath --cache /libs --extra-classpath local_modules.txt > full_cp.txt
 ```
 
 **3. Dockerfile:**
@@ -108,7 +108,7 @@ spec:
       #     volumeMounts:
       #       - name: shared-maven-cache
       #         mountPath: /libs
-      #     command: ["maven_get_deps", "-i", "/config/dependencies.txt", "--download", "--cache", "/libs"]
+      #     command: ["get_deps", "-i", "/config/dependencies.txt", "--download", "--cache", "/libs"]
       
       containers:
         - name: my-java-app
@@ -123,5 +123,5 @@ spec:
 
 ### Benefits for Kubernetes:
 1. **Ultra-Fast Pod Startup**: No dynamic classpath generation or dependency downloads on the critical path of the application container.
-2. **Maximum Security**: The application container (`my-static-app-image`) contains only the JRE, your thin JAR, and `static_cp.txt`. It does not contain `maven_get_deps` and can run with a read-only root filesystem.
+2. **Maximum Security**: The application container (`my-static-app-image`) contains only the JRE, your thin JAR, and `static_cp.txt`. It does not contain `get_deps` and can run with a read-only root filesystem.
 3. **Immutability**: Every replica starts with the exact same pre-computed classpath.

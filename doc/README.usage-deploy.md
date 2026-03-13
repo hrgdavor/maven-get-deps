@@ -71,7 +71,7 @@ The tool generates the CLASSPATH string at startup from the shared library. This
 LIB_ROOT="/opt/shared/lib"
 DEPS_FILE="dependencies.txt"
 
-CP=$(maven_get_deps -i "$DEPS_FILE" -cf path --classpath --cache "$LIB_ROOT")
+CP=$(get_deps -i "$DEPS_FILE" -cf path --classpath --cache "$LIB_ROOT")
 # Or: CP=$(java -jar maven-get-deps-cli.jar --input "$DEPS_FILE" --convert-format path --classpath --cache "$LIB_ROOT")
 
 export CLASSPATH="my-service.jar:$CP"
@@ -83,7 +83,7 @@ exec java com.example.Main "$@"
 ### PowerShell (`start.ps1`):
 ```powershell
 $LIB_ROOT = "C:\opt\shared\lib"
-$CP = maven_get_deps -i dependencies.txt -cf path --classpath --cache $LIB_ROOT
+$CP = get_deps -i dependencies.txt -cf path --classpath --cache $LIB_ROOT
 
 $env:CLASSPATH = "my-service.jar;" + $CP
 java com.example.Main

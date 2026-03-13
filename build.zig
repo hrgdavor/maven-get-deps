@@ -58,7 +58,7 @@ pub fn build(b: *std.Build) void {
     // If neither case applies to you, feel free to delete the declaration you
     // don't need and to put everything under a single module.
     const deps_exe = b.addExecutable(.{
-        .name = "maven_get_deps",
+        .name = "get_deps",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/deps_main.zig"),
             .target = target,
@@ -108,7 +108,7 @@ pub fn build(b: *std.Build) void {
     if (b.args) |args| {
         run_deps_cmd.addArgs(args);
     }
-    const run_deps_step = b.step("run", "Run maven_get_deps");
+    const run_deps_step = b.step("run", "Run get_deps");
     run_deps_step.dependOn(&run_deps_cmd.step);
 
     const run_version_cmd = b.addRunArtifact(version_exe);
