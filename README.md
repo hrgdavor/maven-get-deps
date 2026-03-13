@@ -135,7 +135,8 @@ java -jar maven-get-deps-cli.jar deps.txt --cve-report cve.md     # Scan deps li
 ---
 
 ## CLI Arguments
-
+| arg| description|
+|:---|:---|
 | `[source]` | Positional argument: `pom.xml` OR Maven coordinates OR Input file. Default: `pom.xml` |
 | `-o, --output <file>` | Path to save the dependency list. |
 | `-d, --dest-dir <dir>` | Destination directory for JAR copies |
