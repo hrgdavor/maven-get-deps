@@ -36,7 +36,7 @@ Native binaries with zero dependencies, optimized for production runtime usage.
 
 ---
 
-> **[NEW] Interactive Download Guide**: [Click here to generate custom download commands](https://hrgdavor.github.com/maven-get-deps/download.html) based on your tool and platform.
+> Interactive Download Guide**: [Click here to generate custom download commands](https://hrgdavor.github.io/maven-get-deps/download.html) based on your tool and platform.
 
 <a name="guide-summary"></a>
 
