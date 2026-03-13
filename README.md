@@ -92,7 +92,7 @@ For a detailed guide on setting this up, see **[doc/README.usage-deploy.md](doc/
 
 ## Download
 
-**[Click here to generate custom download commands](https://hrgdavor.github.io/maven-get-deps/download.html) based on your tool and platform or 
+**[Click here to generate custom download commands](https://hrgdavor.github.io/maven-get-deps/download.html)** based on your tool and platform or 
 get the latest binaries from the [GitHub Releases](https://github.com/hrgdavor/maven-get-deps/releases/latest) or from 
 
 ---
