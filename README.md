@@ -40,7 +40,7 @@ Native binaries with zero dependencies, optimized for production runtime usage.
 
 | Guide | Description |
 |---|---|
-| **[Download Guide](https://hrgdavor.github.io/maven-get-deps/download.html)** | **Central location for latest releases and examples.** |
+| **[Download Guide](https://hrgdavor.github.io/maven-get-deps/download.html)** | **Central location for latest releases** |
 | [Deployment Philosophy](doc/README.usage-deploy.md) | Deploy thin JARs + a shared dep folder. Avoid fat JARs. |
 | [Systemd Daemon Guide](doc/README.systemd.md) | Deploy a Java daemon with `systemd` and atomic versioning. |
 | [Classpath Generation](doc/README.usage-classpath.md) | Generate `CLASSPATH` from a dep file or `pom.xml`. |
