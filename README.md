@@ -61,6 +61,12 @@ Native binaries with zero dependencies, optimized for production runtime usage.
 
 This whole toolset started from looking to deploy a Java app to a remote server. You need your classes **and** all of your dependencies to start your app there. Usually, this means copying dependencies to a `lib/` folder alongside your JAR, or even worse, creating fat JARs. I find that surrender to bloat unacceptable.
 
+- [Java Only] expand dependencies to include transitive dependencies
+- [Java Only] copy dependencies to separate folder (same structure as maven repository)
+- [Zig/Java] fill local maven cache with missing dependencies (same structure as maven repository)
+- [Zig/Java] generate classpath file (newline delimited)
+- [Zig/Java] generate classpath suitable for environment CLASSPATH variable to simplify running java code
+
 With frameworks like Spring bloat and Hibernate, even a moderately sized app — say **500 KB** of *your* code — can carry **50–100 MB** of dependencies. That's a **200× size difference** every time you deploy a new version. And it gets worse with microservices: each service has less code but the same pile of libraries.
 
 ### You Really Should Optimize the Process
