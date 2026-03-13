@@ -36,14 +36,15 @@ It will pay off in the long run, as it gives you **lean, fast releases**: a 500 
 
 Built for deep analysis and Maven ecosystem integration.
 
-- **maven-get-deps** (CLI / Maven Plugin)
+- **maven-get-deps** ([CLI](doc/README.cli.md) /  [Maven Plugin](doc/README.maven-plugin.md))
     - Full **transitive dependency expansion**.
-    - Dependency **size reporting** with incremental attribution.
-    - Classpath generation (`.txt`, `.sh`, `.bat`).
+    - Dependency **size reporting** with incremental attribution [link](doc/README.usage-report.md).
+    - Classpath generation (`.txt`, `.sh`, `.bat`) [link](doc/README.usage-classpath.md).
     - **Copy dependencies** to a separate folder.
     - Local Maven cache filling (downloading missing artifacts).
+- **gradle plugin** [link](doc/gradle.plugin.md) | lightweight Gradle equivalent with `--extra-classpath` support.
 - **cve12** (Focused CLI)
-    - Vulnerability scanning using **OWASP Dependency-Check v12**.
+    - Vulnerability database download **OWASP Dependency-Check v12**.
     - Standalone tool removed from core to reduce bloat and conflicts.
 
 ### 2. Ultra-Fast Zig Utilities
@@ -51,7 +52,7 @@ Built for deep analysis and Maven ecosystem integration.
 Native binaries with zero dependencies, optimized for production runtime usage.
 
 - **get_deps**
-    - Instant path resolution and classpath generation.
+    - Instant path resolution and classpath generation. [link](doc/README.usage-classpath.md)
     - Local Maven cache filling (downloading missing artifacts).
 - **version_manager**
     - Zero-downtime deployment via **atomic symlink swaps**.
@@ -66,12 +67,7 @@ Native binaries with zero dependencies, optimized for production runtime usage.
 | Guide | Description |
 |---|---|
 | **[Hero's Quest](quest/README.md)** (structured guide) | **The Telekinetic Nexus: A Trilogy (Java, Systemd, Versioning) to master the suite.** |
-| [maven plugin](doc/README.maven-plugin.md) | **Maven Plugin** integration for dependency management. |
-| [gradle plugin](doc/gradle.plugin.md) | lightweight Gradle equivalent with `--extra-classpath` support. |
-| [maven-get-deps CLI](doc/README.cli.md) | **Java/Native CLI** for resolution, copying, and reporting. |
-| [Dependency Size Reporting](doc/README.usage-report.md) | Analyse artifact bloat with incremental size attribution. |
 | [Deployment Philosophy](doc/README.usage-deploy.md) | Deploy thin JARs + a shared dep folder. Avoid fat JARs. |
-| [Classpath Generation](doc/README.usage-classpath.md) | Generate `CLASSPATH` from a dep file or `pom.xml`. |
 | [Systemd Daemon Guide](doc/README.systemd.md) | Deploy a Java daemon with `systemd` and atomic versioning. |
 | [Docker Integration (Dynamic)](doc/README.dynamic-docker.md) | Thin Docker images with a shared Maven cache. |
 | [Docker Integration (Static)](doc/README.static-docker.md) | Bake fixed classpath into Docker at build time. |
