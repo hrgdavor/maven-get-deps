@@ -1,9 +1,9 @@
 const tools = [
-    { id: 'maven-get-deps', name: 'maven-get-deps', desc: 'Core Java Tool', langs: ['java', 'jar'] },
-    { id: 'cve12', name: 'cve12', desc: 'CVE Scanner', langs: ['java', 'jar'] },
-    { id: 'get_deps', name: 'get_deps', desc: 'Zig Resolver', langs: ['zig'] },
-    { id: 'version_manager', name: 'version_manager', desc: 'Version Manager', langs: ['zig'] },
-    { id: 'gen_index', name: 'gen_index', desc: 'Index Generator', langs: ['zig'] }
+    { id: 'maven-get-deps', name: 'maven-get-deps', desc: 'Core tool for resolving and downloading Maven dependencies efficiently.', langs: ['java', 'jar'] },
+    { id: 'cve12', name: 'cve12', desc: 'Comprehensive tool to scan dependencies for known CVE vulnerabilities and generate reports.', langs: ['java', 'jar'] },
+    { id: 'get_deps', name: 'get_deps', desc: 'A fast, lightweight dependency resolver implemented in Zig.', langs: ['zig'] },
+    { id: 'version_manager', name: 'version_manager', desc: 'Utility to manage and switch between different versions of installed tools.', langs: ['zig'] },
+    { id: 'gen_index', name: 'gen_index', desc: 'Tool to generate searchable indices for local and remote dependency repositories.', langs: ['zig'] }
 ];
 
 const platforms = [
@@ -72,22 +72,22 @@ function renderToolTable() {
         const isActiveTool = state.tool === t.id;
         return `
         <tr class="${isActiveTool ? 'active-row' : ''}">
-            <td><strong>${t.name}</strong></td>
-            <td>${t.desc}</td>
             <td class="actions-col">
                 <div class="row-actions">
                     ${t.langs.map(l => {
-                        const label = (l === 'java' || l === 'zig') ? 'Native' : 'JAR';
-                        const isActiveLang = isActiveTool && state.lang === l;
-                        return `
+            const label = (l === 'java' || l === 'zig') ? 'Native' : 'JAR';
+            const isActiveLang = isActiveTool && state.lang === l;
+            return `
                         <button class="action-btn ${isActiveLang ? 'active' : ''}" 
                                 data-tool="${t.id}" data-lang="${l}">
                             ${label}
                         </button>
                         `;
-                    }).join('')}
+        }).join('')}
                 </div>
             </td>
+            <td><strong>${t.name}</strong></td>
+            <td>${t.desc}</td>
         </tr>
         `;
     }).join('');
@@ -132,26 +132,25 @@ function updateCommands() {
 
     const tool = tools.find(t => t.id === state.tool);
     const platform = platforms.find(p => p.id === state.platform);
-    
+
     let artifact = '';
     let isZip = platform.os === 'windows';
     let ext = isZip ? 'zip' : 'tar.gz';
     let extractCmd = isZip ? `Expand-Archive -Path` : `tar -xzf`;
-    
+
     if (state.lang === 'jar') {
         artifact = `${state.tool}-cli.jar`;
         output.innerHTML = `# Download CLI JAR\ncurl -L -O ${baseUrl}/${artifact}\n\n# Run usage\njava -jar ${artifact} --help`;
-        return;
-    }
-
-    const toolName = state.lang === 'zig' ? state.tool.replace('_', '-') : state.tool;
-    const langSuffix = state.lang === 'zig' ? '-zig' : '';
-    artifact = `${toolName}${langSuffix}-${platform.os}-${platform.arch}.${ext}`;
-
-    if (platform.os === 'windows') {
-        output.innerHTML = `# Download and Extract (PowerShell)\nInvoke-WebRequest -Uri "${baseUrl}/${artifact}" -OutFile "${artifact}"\n${extractCmd} "${artifact}" -DestinationPath "."\n\n# Run tool\n.\\${state.tool}.exe --help`;
     } else {
-        output.innerHTML = `# Download and Extract\ncurl -L -O ${baseUrl}/${artifact}\n${extractCmd} ${artifact}\n\n# Run tool\n./${state.tool} --help`;
+        const toolName = state.lang === 'zig' ? state.tool.replace('_', '-') : state.tool;
+        const langSuffix = state.lang === 'zig' ? '-zig' : '';
+        artifact = `${toolName}${langSuffix}-${platform.os}-${platform.arch}.${ext}`;
+
+        if (platform.os === 'windows') {
+            output.innerHTML = `# Download and Extract (PowerShell)\nInvoke-WebRequest -Uri "${baseUrl}/${artifact}" -OutFile "${artifact}"\n${extractCmd} "${artifact}" -DestinationPath "."\n\n# Run tool\n.\\${state.tool}.exe --help`;
+        } else {
+            output.innerHTML = `# Download and Extract\ncurl -L -O ${baseUrl}/${artifact}\n${extractCmd} ${artifact}\n\n# Run tool\n./${state.tool} --help`;
+        }
     }
 
     const downloadLink = document.getElementById('download-link');

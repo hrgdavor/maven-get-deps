@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,12 +10,13 @@
     --card-bg: #ffffff;
     --text-main: #2c3e50;
     --text-muted: #7f8c8d;
-    --primary: #fbc02d; /* Sunny Yellow */
+    --primary: #fbc02d;
+    /* Sunny Yellow */
     --primary-dark: #f9a825;
     --border-color: #dcdde1;
     --terminal-bg: #1e272e;
     --terminal-text: #ecf0f1;
-    --shadow: 0 4px 10px rgba(0,0,0,0.08);
+    --shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
 }
 
 * {
@@ -132,7 +134,7 @@ section:last-child {
 
 .actions-col {
     text-align: right;
-    width: 250px;
+    width: 170px;
 }
 
 .row-actions {
@@ -164,7 +166,7 @@ section:last-child {
     background: var(--primary);
     color: #fff;
     border-color: var(--primary-dark);
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 /* Command Section Styling */
@@ -214,7 +216,10 @@ section:last-child {
     font-weight: 600;
 }
 
-.secondary-btn:hover { border-color: var(--primary); color: var(--primary-dark); }
+.secondary-btn:hover {
+    border-color: var(--primary);
+    color: var(--primary-dark);
+}
 
 footer {
     text-align: center;
@@ -223,20 +228,58 @@ footer {
     font-size: 0.85rem;
 }
 
-footer a { color: var(--primary-dark); text-decoration: none; font-weight: 600; }
+footer a {
+    color: var(--primary-dark);
+    text-decoration: none;
+    font-weight: 600;
+}
 
 @media (max-width: 600px) {
-    .platform-tabs { flex-wrap: wrap; }
-    .tab-btn { flex: 1; border-radius: 8px; border-bottom: 1px solid var(--border-color); }
-    .tab-content { border-radius: 12px; margin-top: 8px; }
-    .tool-table thead { display: none; }
-    .tool-table tr { display: block; margin-bottom: 16px; border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; }
-    .tool-table td { display: block; text-align: left; padding: 8px; border: none; }
-    .actions-col { width: 100%; text-align: left; }
-    .row-actions { justify-content: flex-start; }
-}
-</style>
+    .platform-tabs {
+        flex-wrap: wrap;
+    }
+
+    .tab-btn {
+        flex: 1;
+        border-radius: 8px;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .tab-content {
+        border-radius: 12px;
+        margin-top: 8px;
+    }
+
+    .tool-table thead {
+        display: none;
+    }
+
+    .tool-table tr {
+        display: block;
+        margin-bottom: 16px;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 10px;
+    }
+
+    .tool-table td {
+        display: block;
+        text-align: left;
+        padding: 8px;
+        border: none;
+    }
+
+    .actions-col {
+        width: 100%;
+        text-align: left;
+    }
+
+    .row-actions {
+        justify-content: flex-start;
+    }
+}</style>
 </head>
+
 <body>
     <div class="container">
         <header>
@@ -255,9 +298,9 @@ footer a { color: var(--primary-dark); text-decoration: none; font-weight: 600; 
                     <table class="tool-table">
                         <thead>
                             <tr>
+                                <th class="actions-col">Implementation</th>
                                 <th>Tool</th>
                                 <th>Description</th>
-                                <th class="actions-col">Select Implementation</th>
                             </tr>
                         </thead>
                         <tbody id="tool-table-body">
@@ -270,8 +313,8 @@ footer a { color: var(--primary-dark); text-decoration: none; font-weight: 600; 
                     <div class="command-header">
                         <h2>Installation Commands</h2>
                         <div class="command-actions">
-                            <a id="download-link" title="Direct Download" target="_blank">Download Artifact</a>
                             <button id="copy-btn" class="secondary-btn">Copy to Clipboard</button>
+                            <a id="download-link" title="Direct Download" target="_blank">Download Artifact</a>
                         </div>
                     </div>
                     <div class="terminal">
@@ -282,15 +325,17 @@ footer a { color: var(--primary-dark); text-decoration: none; font-weight: 600; 
         </main>
 
         <footer>
-            <p>Latest version automatically fetched from <a href="https://github.com/hrgdavor/maven-get-deps/releases/latest" target="_blank">GitHub Releases</a>.</p>
+            <p>Latest version automatically fetched from <a
+                    href="https://github.com/hrgdavor/maven-get-deps/releases/latest" target="_blank">GitHub
+                    Releases</a>.</p>
         </footer>
     </div>
     <script>const tools = [
-    { id: 'maven-get-deps', name: 'maven-get-deps', desc: 'Core Java Tool', langs: ['java', 'jar'] },
-    { id: 'cve12', name: 'cve12', desc: 'CVE Scanner', langs: ['java', 'jar'] },
-    { id: 'get_deps', name: 'get_deps', desc: 'Zig Resolver', langs: ['zig'] },
-    { id: 'version_manager', name: 'version_manager', desc: 'Version Manager', langs: ['zig'] },
-    { id: 'gen_index', name: 'gen_index', desc: 'Index Generator', langs: ['zig'] }
+    { id: 'maven-get-deps', name: 'maven-get-deps', desc: 'Core tool for resolving and downloading Maven dependencies efficiently.', langs: ['java', 'jar'] },
+    { id: 'cve12', name: 'cve12', desc: 'Comprehensive tool to scan dependencies for known CVE vulnerabilities and generate reports.', langs: ['java', 'jar'] },
+    { id: 'get_deps', name: 'get_deps', desc: 'A fast, lightweight dependency resolver implemented in Zig.', langs: ['zig'] },
+    { id: 'version_manager', name: 'version_manager', desc: 'Utility to manage and switch between different versions of installed tools.', langs: ['zig'] },
+    { id: 'gen_index', name: 'gen_index', desc: 'Tool to generate searchable indices for local and remote dependency repositories.', langs: ['zig'] }
 ];
 
 const platforms = [
@@ -359,22 +404,22 @@ function renderToolTable() {
         const isActiveTool = state.tool === t.id;
         return `
         <tr class="${isActiveTool ? 'active-row' : ''}">
-            <td><strong>${t.name}</strong></td>
-            <td>${t.desc}</td>
             <td class="actions-col">
                 <div class="row-actions">
                     ${t.langs.map(l => {
-                        const label = (l === 'java' || l === 'zig') ? 'Native' : 'JAR';
-                        const isActiveLang = isActiveTool && state.lang === l;
-                        return `
+            const label = (l === 'java' || l === 'zig') ? 'Native' : 'JAR';
+            const isActiveLang = isActiveTool && state.lang === l;
+            return `
                         <button class="action-btn ${isActiveLang ? 'active' : ''}" 
                                 data-tool="${t.id}" data-lang="${l}">
                             ${label}
                         </button>
                         `;
-                    }).join('')}
+        }).join('')}
                 </div>
             </td>
+            <td><strong>${t.name}</strong></td>
+            <td>${t.desc}</td>
         </tr>
         `;
     }).join('');
@@ -419,26 +464,25 @@ function updateCommands() {
 
     const tool = tools.find(t => t.id === state.tool);
     const platform = platforms.find(p => p.id === state.platform);
-    
+
     let artifact = '';
     let isZip = platform.os === 'windows';
     let ext = isZip ? 'zip' : 'tar.gz';
     let extractCmd = isZip ? `Expand-Archive -Path` : `tar -xzf`;
-    
+
     if (state.lang === 'jar') {
         artifact = `${state.tool}-cli.jar`;
         output.innerHTML = `# Download CLI JAR\ncurl -L -O ${baseUrl}/${artifact}\n\n# Run usage\njava -jar ${artifact} --help`;
-        return;
-    }
-
-    const toolName = state.lang === 'zig' ? state.tool.replace('_', '-') : state.tool;
-    const langSuffix = state.lang === 'zig' ? '-zig' : '';
-    artifact = `${toolName}${langSuffix}-${platform.os}-${platform.arch}.${ext}`;
-
-    if (platform.os === 'windows') {
-        output.innerHTML = `# Download and Extract (PowerShell)\nInvoke-WebRequest -Uri "${baseUrl}/${artifact}" -OutFile "${artifact}"\n${extractCmd} "${artifact}" -DestinationPath "."\n\n# Run tool\n.\\${state.tool}.exe --help`;
     } else {
-        output.innerHTML = `# Download and Extract\ncurl -L -O ${baseUrl}/${artifact}\n${extractCmd} ${artifact}\n\n# Run tool\n./${state.tool} --help`;
+        const toolName = state.lang === 'zig' ? state.tool.replace('_', '-') : state.tool;
+        const langSuffix = state.lang === 'zig' ? '-zig' : '';
+        artifact = `${toolName}${langSuffix}-${platform.os}-${platform.arch}.${ext}`;
+
+        if (platform.os === 'windows') {
+            output.innerHTML = `# Download and Extract (PowerShell)\nInvoke-WebRequest -Uri "${baseUrl}/${artifact}" -OutFile "${artifact}"\n${extractCmd} "${artifact}" -DestinationPath "."\n\n# Run tool\n.\\${state.tool}.exe --help`;
+        } else {
+            output.innerHTML = `# Download and Extract\ncurl -L -O ${baseUrl}/${artifact}\n${extractCmd} ${artifact}\n\n# Run tool\n./${state.tool} --help`;
+        }
     }
 
     const downloadLink = document.getElementById('download-link');
@@ -451,4 +495,5 @@ function updateCommands() {
 init();
 </script>
 </body>
+
 </html>

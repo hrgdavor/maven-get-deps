@@ -3,12 +3,13 @@
     --card-bg: #ffffff;
     --text-main: #2c3e50;
     --text-muted: #7f8c8d;
-    --primary: #fbc02d; /* Sunny Yellow */
+    --primary: #fbc02d;
+    /* Sunny Yellow */
     --primary-dark: #f9a825;
     --border-color: #dcdde1;
     --terminal-bg: #1e272e;
     --terminal-text: #ecf0f1;
-    --shadow: 0 4px 10px rgba(0,0,0,0.08);
+    --shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
 }
 
 * {
@@ -126,7 +127,7 @@ section:last-child {
 
 .actions-col {
     text-align: right;
-    width: 250px;
+    width: 170px;
 }
 
 .row-actions {
@@ -158,7 +159,7 @@ section:last-child {
     background: var(--primary);
     color: #fff;
     border-color: var(--primary-dark);
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 /* Command Section Styling */
@@ -208,7 +209,10 @@ section:last-child {
     font-weight: 600;
 }
 
-.secondary-btn:hover { border-color: var(--primary); color: var(--primary-dark); }
+.secondary-btn:hover {
+    border-color: var(--primary);
+    color: var(--primary-dark);
+}
 
 footer {
     text-align: center;
@@ -217,15 +221,53 @@ footer {
     font-size: 0.85rem;
 }
 
-footer a { color: var(--primary-dark); text-decoration: none; font-weight: 600; }
+footer a {
+    color: var(--primary-dark);
+    text-decoration: none;
+    font-weight: 600;
+}
 
 @media (max-width: 600px) {
-    .platform-tabs { flex-wrap: wrap; }
-    .tab-btn { flex: 1; border-radius: 8px; border-bottom: 1px solid var(--border-color); }
-    .tab-content { border-radius: 12px; margin-top: 8px; }
-    .tool-table thead { display: none; }
-    .tool-table tr { display: block; margin-bottom: 16px; border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; }
-    .tool-table td { display: block; text-align: left; padding: 8px; border: none; }
-    .actions-col { width: 100%; text-align: left; }
-    .row-actions { justify-content: flex-start; }
+    .platform-tabs {
+        flex-wrap: wrap;
+    }
+
+    .tab-btn {
+        flex: 1;
+        border-radius: 8px;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .tab-content {
+        border-radius: 12px;
+        margin-top: 8px;
+    }
+
+    .tool-table thead {
+        display: none;
+    }
+
+    .tool-table tr {
+        display: block;
+        margin-bottom: 16px;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 10px;
+    }
+
+    .tool-table td {
+        display: block;
+        text-align: left;
+        padding: 8px;
+        border: none;
+    }
+
+    .actions-col {
+        width: 100%;
+        text-align: left;
+    }
+
+    .row-actions {
+        justify-content: flex-start;
+    }
 }

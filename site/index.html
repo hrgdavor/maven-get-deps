@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Download maven-get-deps Tools</title>
     <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
     <div class="container">
         <header>
@@ -24,9 +26,9 @@
                     <table class="tool-table">
                         <thead>
                             <tr>
+                                <th class="actions-col">Implementation</th>
                                 <th>Tool</th>
                                 <th>Description</th>
-                                <th class="actions-col">Select Implementation</th>
                             </tr>
                         </thead>
                         <tbody id="tool-table-body">
@@ -39,8 +41,8 @@
                     <div class="command-header">
                         <h2>Installation Commands</h2>
                         <div class="command-actions">
-                            <a id="download-link" title="Direct Download" target="_blank">Download Artifact</a>
                             <button id="copy-btn" class="secondary-btn">Copy to Clipboard</button>
+                            <a id="download-link" title="Direct Download" target="_blank">Download Artifact</a>
                         </div>
                     </div>
                     <div class="terminal">
@@ -51,9 +53,12 @@
         </main>
 
         <footer>
-            <p>Latest version automatically fetched from <a href="https://github.com/hrgdavor/maven-get-deps/releases/latest" target="_blank">GitHub Releases</a>.</p>
+            <p>Latest version automatically fetched from <a
+                    href="https://github.com/hrgdavor/maven-get-deps/releases/latest" target="_blank">GitHub
+                    Releases</a>.</p>
         </footer>
     </div>
     <script src="app.js"></script>
 </body>
+
 </html>
