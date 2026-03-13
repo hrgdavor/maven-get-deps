@@ -36,25 +36,17 @@ Native binaries with zero dependencies, optimized for production runtime usage.
 
 ---
 
-> Interactive Download Guide**: [Click here to generate custom download commands](https://hrgdavor.github.io/maven-get-deps/download.html) based on your tool and platform.
-
 <a name="guide-summary"></a>
 
-
-| Guide | Description | Download |
-|---|---|---|
-| **[Download Guide](doc/README.download.md)** | **Central location for latest releases and examples.** | [View All](doc/README.download.md) |
-| [maven_get_deps (Java)](doc/README.maven_get_deps.md) | Full-featured expansion, dependency copying, and reports. | [Download](doc/README.download.md#java-maven_get_deps) |
-| [cve12 Scanner (Java)](doc/README.usage-cve.md) | Focused **CVE Vulnerability Scanning** using OWASP v12. | [Download](doc/README.download.md#java-cve12) |
-| [get_deps (Zig)](doc/README.get_deps.md) | Ultra-fast **path resolution and artifact downloads**. | [Download](doc/README.download.md#zig-get_deps) |
-| [version_manager (Zig)](doc/README.version_manager.md) | Zero-downtime **atomic symlink deployments**. | [Download](doc/README.download.md#zig-version_manager) |
-| [gen_index (Zig)](doc/README.gen_index.md) | Generate deployment version indexes manually. | [Download](doc/README.download.md#zig-gen_index) |
-| [Deployment Philosophy](doc/README.usage-deploy.md) | Deploy thin JARs + a shared dep folder. Avoid fat JARs. | [N/A] |
-| [Systemd Daemon Guide](doc/README.systemd.md) | Deploy a Java daemon with `systemd` and atomic versioning. | [N/A] |
-| [Classpath Generation](doc/README.usage-classpath.md) | Generate `CLASSPATH` from a dep file or `pom.xml`. | [N/A] |
-| [Dependency Size Reporting](doc/README.usage-report.md) | Analyze artifact bloat with incremental size attribution. | [N/A] |
-| [Docker Integration (Dynamic)](doc/README.docker.md) | Thin Docker images with a shared Maven cache. | [N/A] |
-| [Docker Integration (Static)](doc/README.static-docker.md) | Bake fixed classpath into Docker at build time. | [N/A] |
+| Guide | Description |
+|---|---|
+| **[Download Guide](https://hrgdavor.github.io/maven-get-deps/download.html)** | **Central location for latest releases and examples.** |
+| [Deployment Philosophy](doc/README.usage-deploy.md) | Deploy thin JARs + a shared dep folder. Avoid fat JARs. |
+| [Systemd Daemon Guide](doc/README.systemd.md) | Deploy a Java daemon with `systemd` and atomic versioning. |
+| [Classpath Generation](doc/README.usage-classpath.md) | Generate `CLASSPATH` from a dep file or `pom.xml`. |
+| [Dependency Size Reporting](doc/README.usage-report.md) | Analyze artifact bloat with incremental size attribution. |
+| [Docker Integration (Dynamic)](doc/README.docker.md) | Thin Docker images with a shared Maven cache. |
+| [Docker Integration (Static)](doc/README.static-docker.md) | Bake fixed classpath into Docker at build time. |
 | [Build & Development](doc/README.dev.md) | Building the project, GraalVM native images, and MetadataMerger. |
 | [Gradle Plugin Guide](doc/gradle.plugin.md) | Create a lightweight Gradle equivalent with `--extra-classpath` support. |
 | [Maven Artifact Layout](doc/MAVEN_LAYOUT.md) | Standard directory patterns and regex conversion examples (Java/JS). |
