@@ -31,36 +31,29 @@ body {
     padding: 0 20px;
 }
 
-header {
-    text-align: center;
-    margin-bottom: 24px;
+/* Navigation Styling */
+.platform-nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 10px;
+    margin-bottom: -1px; /* Overlap with content border */
 }
 
-header h1 {
-    font-size: 2.2rem;
-    margin-bottom: 4px;
-}
-
-header p {
-    color: var(--text-muted);
-}
-
-/* Tabs Styling */
 .platform-tabs {
     display: flex;
     gap: 8px;
-    padding: 0 10px;
 }
 
 .tab-btn {
-    padding: 12px 24px;
+    padding: 10px 20px;
     border: 1px solid var(--border-color);
     border-bottom: none;
     background: #e9ecef;
-    border-radius: 10px 10px 0 0;
+    border-radius: 8px 8px 0 0;
     cursor: pointer;
     font-weight: 600;
-    font-size: 0.95rem;
+    font-size: 0.9rem;
     color: var(--text-muted);
     transition: all 0.2s ease;
 }
@@ -74,9 +67,20 @@ header p {
     background: var(--card-bg);
     color: var(--text-main);
     border-color: var(--border-color);
-    padding-bottom: 13px;
+    padding-bottom: 11px;
     margin-bottom: -1px;
     z-index: 10;
+}
+
+.github-link {
+    color: var(--text-muted);
+    transition: color 0.2s ease;
+    display: flex;
+    align-items: center;
+}
+
+.github-link:hover {
+    color: var(--text-main);
 }
 
 /* Content Area */
