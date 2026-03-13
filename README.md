@@ -1,51 +1,57 @@
-# maven-get-deps
+## Project Overview
 
-Started as set of tools for managing java dependencies. Then expanded to also simplify/streamline deployment of an application to a linux server using systemd with management of runtime versions using symlinks, and tracking whene version was active(deployed,replaced).
+Started as set of tools for managing Java dependencies, this project has evolved into a comprehensive toolset for streamlined deployment, version management, and security scanning.
 
 Available for multiple enviroments so you can be flexible to do some of the tasks even without maven or java installed. Version management tool is zig app compiled as native executable that can be used independently from this project. Or at least you can manage your java backend and frontend versioning with this same tool.
 
 > Maven repository is the backbone of java dependency mamagement regardless if you use `mvn`, `gradle`, `mvnd`, `ivy` ... And the [format that reliably maps artifact definition to folder name](doc/MAVEN_LAYOUT.md) in any maven repository is a great asset to working with java dependencies. The tools here follow that convention making the process compatible with your existing `~/.m2/repository` and maven central.
 
-This project contains a set of utilities that work together
 
-**get_deps** (maven plugin, executable jar, native app)
+### 1. Core Java Suite
 
-- [Java Only] expand dependencies to include transitive dependencies
-- [Zig/Java] fill local maven cache with missing dependencies
-- [Zig/Java] copy dependencies to separate folder
-- [Zig/Java] generate classpath file (newline delimited)
-- [Zig/Java] generate classpath suitable for environment CLASSPATH variable to simplify running java code
+Built for deep analysis and Maven ecosystem integration.
 
-**cve12**
+- **maven-get-deps** (CLI / Maven Plugin)
+    - Full **transitive dependency expansion**.
+    - Dependency **size reporting** with incremental attribution.
+    - Classpath generation (`.txt`, `.sh`, `.bat`).
+    - Local Maven cache filling (downloading missing artifacts).
+- **cve12** (Focused CLI)
+    - Vulnerability scanning using **OWASP Dependency-Check v12**.
+    - Standalone tool removed from core to reduce bloat and conflicts.
 
-- Focused CLI tool for CVE scanning using OWASP Dependency-Check v12.
-- No OWASP dependency in the main `maven-get-deps` tool.
+### 2. Ultra-Fast Zig Utilities
 
-**version_manager**
+Native binaries with zero dependencies, optimized for production runtime usage.
 
-- manage version deploy/revert 
-- keeps version history with time and marker if it was reverted
-- deploy will validate version from index file to avoid typo breaking deployment(stopping old instance and failing the new one)
+- **get_deps**
+    - Instant path resolution and classpath generation.
+    - Synchronizes/fills local Maven cache from remote repositories.
+- **version_manager**
+    - Zero-downtime deployment via **atomic symlink swaps**.
+    - Maintains version history and revert markers.
+- **gen_index**
+    - Simple metadata generator for deployment versioning, that can be used as is, or as a reference to make your own.
 
+---
 
-**gen_index** native tool you can use if you have not yet decided on own way to collect versions
-
-- generate index of available versions (one sample way here to get you started, that you can change to suit your needs)
+<a name="guide-summary"></a>
 
 
 | Guide | Description | Download |
 |---|---|---|
 | **[Download Guide](doc/README.download.md)** | **Central location for latest releases and examples.** | [View All](doc/README.download.md) |
-| [maven_get_deps (Java)](doc/README.maven_get_deps.md) | The original implementation: Java CLI, Maven Plugin, Size Reporting, and **transitive expansion**. | [Download](doc/README.download.md#java-maven_get_deps) |
-| [get_deps (Zig Edition)](doc/README.get_deps.md) | Ultra-fast Zig implementation for **path resolution and artifact downloads**. | [Download](doc/README.download.md#zig-get_deps) |
-| [cve12 Scanner](doc/README.usage-cve.md) | Focused tool for **CVE Vulnerability Scanning** using OWASP v12. | [Download](doc/README.download.md#java-cve12) |
-| [Deployment & Shared Library](doc/README.usage-deploy.md) | Deploy thin JARs + a shared dep folder. Avoid fat JARs entirely. | [N/A] |
+| [maven_get_deps (Java)](doc/README.maven_get_deps.md) | Full-featured expansion, dependency copying, and reports. | [Download](doc/README.download.md#java-maven_get_deps) |
+| [cve12 Scanner (Java)](doc/README.usage-cve.md) | Focused **CVE Vulnerability Scanning** using OWASP v12. | [Download](doc/README.download.md#java-cve12) |
+| [get_deps (Zig)](doc/README.get_deps.md) | Ultra-fast **path resolution and artifact downloads**. | [Download](doc/README.download.md#zig-get_deps) |
+| [version_manager (Zig)](doc/README.version_manager.md) | Zero-downtime **atomic symlink deployments**. | [Download](doc/README.download.md#zig-version_manager) |
+| [gen_index (Zig)](doc/README.gen_index.md) | Generate deployment version indexes manually. | [Download](doc/README.download.md#zig-gen_index) |
+| [Deployment Philosophy](doc/README.usage-deploy.md) | Deploy thin JARs + a shared dep folder. Avoid fat JARs. | [N/A] |
 | [Systemd Daemon Guide](doc/README.systemd.md) | Deploy a Java daemon with `systemd` and atomic versioning. | [N/A] |
 | [Classpath Generation](doc/README.usage-classpath.md) | Generate `CLASSPATH` from a dep file or `pom.xml`. | [N/A] |
 | [Dependency Size Reporting](doc/README.usage-report.md) | Analyze artifact bloat with incremental size attribution. | [N/A] |
-| [Zig Binary Guide](doc/README.zig.md) | Ultra-fast, zero-dependency binary. Deployment philosophy, SDKMAN!, JVM-vs-container. |
-| [Docker Integration (Dynamic)](doc/README.docker.md) | Thin Docker images with a shared Maven cache. Includes K8s InitContainer pattern. |
-| [Docker Integration (Static)](doc/README.static-docker.md) | Bake a fixed classpath into Docker at build time. Most secure, zero runtime tools. |
+| [Docker Integration (Dynamic)](doc/README.docker.md) | Thin Docker images with a shared Maven cache. | [N/A] |
+| [Docker Integration (Static)](doc/README.static-docker.md) | Bake fixed classpath into Docker at build time. | [N/A] |
 | [Build & Development](doc/README.dev.md) | Building the project, GraalVM native images, and MetadataMerger. |
 | [Gradle Plugin Guide](doc/gradle.plugin.md) | Create a lightweight Gradle equivalent with `--extra-classpath` support. |
 | [Maven Artifact Layout](doc/MAVEN_LAYOUT.md) | Standard directory patterns and regex conversion examples (Java/JS). |
@@ -83,77 +89,70 @@ For a detailed guide on setting this up, see **[doc/README.usage-deploy.md](doc/
 
 ## Download
 
-Manually download from [GitHub Releases](https://github.com/hrgdavor/maven-get-deps/releases).
+Get the latest binaries from the [GitHub Releases](https://github.com/hrgdavor/maven-get-deps/releases/latest).
 
-| Artifact | Description |
-|---|---|
-| `maven-get-deps-linux-x64.tar.gz` | Native Linux binary |
-| `maven-get-deps-windows-x64.zip` | Native Windows binary |
-| `maven-get-deps-cli.jar` | Fat JAR — runs anywhere with `java -jar` |
-| `maven-get-deps` (Zig) | Ultra-fast native binary with Revision Management |
+| Category | Artifacts | Description |
+|---|---|---|
+| **Java Suite** | `maven-get-deps-cli.jar`<br>`cve12-cli.jar` | Platform-independent CLI JARs (JRE 17+). |
+| **Native (Windows)** | `maven-get-deps-windows-x64.zip`<br>`cve12-windows-x64.zip` | GraalVM native images for instant startup. |
+| **Native (Linux)** | `maven-get-deps-linux-x64.tar.gz`<br>`cve12-linux-x64.tar.gz` | GraalVM native images (x64). |
+| **Zig Utils** | `get-deps-zig-*`<br>`version-manager-zig-*`<br>`gen-index-zig-*` | Ultra-fast binaries for Linux (x64/ARM64) and Windows. |
 
-> The Linux/Windows binaries are built with GraalVM native image for instant startup. For the high-performance Zig binary, see **[doc/README.zig.md](doc/README.zig.md)**.
+> For detailed installation steps and copy-paste examples, see the **[Download Guide](doc/README.download.md)**.
 
-To automate downloading the latest release, query the GitHub API:
-`https://api.github.com/repos/hrgdavor/maven-get-deps/releases/latest`
+---
 
 ---
 
 ## Quick Start
 
-### Maven Plugin (Resolve & List Dependencies)
+### 1. Dependency Resolution (`maven-get-deps`)
 
 ```bash
-mvn hr.hrg:maven-get-deps:1.0.0:get-deps [-DdestDir=<PATH>] [-DcopyJars=true] [-DoutputFile=deps.txt]
-```
-
-### CLI (Generate Classpath)
-
-```bash
-# From pom.xml (default or explicit)
+# Generate classpath from pom.xml
 java -jar maven-get-deps-cli.jar
-java -jar maven-get-deps-cli.jar pom.xml
 
-# From Maven coordinates (ad-hoc)
-java -jar maven-get-deps-cli.jar commons-lang:commons-lang:2.6
+# Generate size report for an ad-hoc artifact
+java -jar maven-get-deps-cli.jar commons-lang:commons-lang:2.6 --report report.md
 
-# From a dependency list file
-java -jar maven-get-deps-cli.jar deps.txt --convert-format path --classpath
+# Copy dependencies to a 'lib' folder
+java -jar maven-get-deps-cli.jar pom.xml --dest-dir lib
+```
 
-### Revision Management
-
-The Zig version of the CLI includes a built-in Reconciler for managing application versions via atomic symlink swaps. See **[doc/README.zig.md](doc/README.zig.md#revision-management-zero-downtime-deployment)** for details.
-
-### CLI (CVE Scan)
+### 2. CVE Scanning (`cve12`)
 
 ```bash
-java -jar maven-get-deps-cli.jar --cve-update                     # First-time DB setup
-java -jar maven-get-deps-cli.jar pom.xml --cve-report cve.md      # Scan pom
-java -jar maven-get-deps-cli.jar deps.txt --cve-report cve.md     # Scan deps list
+# First-time DB setup (downloads ~250MB)
+java -jar cve12-cli.jar --cve-update --nvd-api-key YOUR_KEY
+
+# Scan a dependency list generated by maven-get-deps
+java -jar cve12-cli.jar --input deps.txt --report cve.md
 ```
+
+### 3. Revision Management (Zig)
+
+Managed via atomic symlink swaps. See **[doc/README.get_deps.md](doc/README.get_deps.md)** and **[doc/README.version_manager.md](doc/README.version_manager.md)**.
 
 ---
 
-## CLI Arguments
-| arg| description|
+## CLI Arguments (`maven-get-deps`)
+
+| arg | description |
 |:---|:---|
-| `[source]` | Positional argument: `pom.xml` OR Maven coordinates OR Input file. Default: `pom.xml` |
+| `[source]` | Positional: `pom.xml`, Maven coordinates, or deps file. Default: `pom.xml` |
 | `-o, --output <file>` | Path to save the dependency list. |
-| `-d, --dest-dir <dir>` | Destination directory for JAR copies |
-| `-n, --no-copy` | Disable JAR copying even if `--dest-dir` is set |
-| `-c, --cache <dir>` | Local Maven repository (default: `~/.m2/repository`) |
-| `-r, --report <file>` | Path to save the size report (markdown). |
-| `-ex, --exclude-cp <G:A,path>` | Exclude specific artifacts or paths. |
-| `-sc, --scopes <scopes>` | Comma-separated scopes (default: compile,runtime). |
-| `-cp, --classpath` | Output as OS-separated `CLASSPATH` string |
-| `-cf, --convert-format <fmt>` | Convert format: `colon` or `path` |
-| `-ecp, --extra-classpath <file>` | File with extra classpath entries to append (one per line) |
-| `-cr, --cve-report <file>` | Generate CVE Markdown report |
-| `-cd, --cve-data <dir>` | OWASP H2 database directory |
-| `-cu, --cve-update` | Download/update the local CVE database |
-| `-nk, --nvd-api-key <key>` | NVD API key for faster updates |
-| `-cv, --cve-check-versions` | Search for nearest clean version for vulnerable deps |
-| `-ct, --cve-severity-threshold <val>` | CVSS threshold for build-breaking (default: `8.0`) |
+| `-d, --dest-dir <dir>` | Destination directory for JAR copies. |
+| `-n, --no-copy` | Disable JAR copying even if `--dest-dir` is set. |
+| `-c, --cache <dir>` | Local Maven repository (default: `~/.m2/repository`). |
+| `-r, --report <file>` | Path to save the dependency size report (Markdown). |
+| `-ex, --exclude-cp <G:A>` | Comma-separated list of artifact IDs or paths to exclude. |
+| `-s, --scopes <scopes>` | Comma-separated list of scopes (default: `compile,runtime`). |
+| `-cp, --classpath` | Output as a valid OS-specific `CLASSPATH` string. |
+| `-cf, --convert-format <fmt>` | Convert input file format: `colon` or `path`. |
+| `-ecp, --extra-classpath <f>` | File containing additional classpath entries to append. |
+| `-v, --version` | Show tool version. |
+
+> **Note**: CVE scanning arguments have been moved to the **[cve12 scanner](doc/README.usage-cve.md)**.
 
 
 ### Maven Plugin Parameters
