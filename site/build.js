@@ -9,7 +9,7 @@ if (!fs.existsSync(path.dirname(destFile))) {
     fs.mkdirSync(path.dirname(destFile), { recursive: true });
 }
 
-let html = fs.readFileSync(path.join(srcDir, 'index.html'), 'utf8');
+let html = fs.readFileSync(path.join(srcDir, 'download.html'), 'utf8');
 const css = fs.readFileSync(path.join(srcDir, 'style.css'), 'utf8');
 const js = fs.readFileSync(path.join(srcDir, 'app.js'), 'utf8');
 
