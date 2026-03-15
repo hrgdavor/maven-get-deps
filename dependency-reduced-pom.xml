@@ -41,8 +41,6 @@
         <configuration>
           <release>17</release>
           <excludes>
-            <exclude>**/Main.java</exclude>
-            <exclude>**/CveReportService.java</exclude>
             <exclude>**/MetadataMerger.java</exclude>
           </excludes>
         </configuration>
@@ -171,30 +169,6 @@
           <scope>compile</scope>
         </dependency>
         <dependency>
-          <groupId>org.owasp</groupId>
-          <artifactId>dependency-check-core</artifactId>
-          <version>12.2.0</version>
-          <scope>compile</scope>
-        </dependency>
-        <dependency>
-          <groupId>org.apache.httpcomponents.client5</groupId>
-          <artifactId>httpclient5</artifactId>
-          <version>5.5.1</version>
-          <scope>compile</scope>
-        </dependency>
-        <dependency>
-          <groupId>org.apache.commons</groupId>
-          <artifactId>commons-jcs3-core</artifactId>
-          <version>3.2.1</version>
-          <scope>compile</scope>
-        </dependency>
-        <dependency>
-          <groupId>com.h2database</groupId>
-          <artifactId>h2</artifactId>
-          <version>2.2.224</version>
-          <scope>compile</scope>
-        </dependency>
-        <dependency>
           <groupId>com.fasterxml.jackson.core</groupId>
           <artifactId>jackson-databind</artifactId>
           <version>2.20.1</version>
@@ -244,11 +218,13 @@
                 <buildArg>--no-fallback</buildArg>
                 <buildArg>--enable-url-protocols=http,https</buildArg>
                 <buildArg>--report-unsupported-elements-at-runtime</buildArg>
-                <buildArg>--initialize-at-run-time=org.apache.lucene.store.PosixNativeAccess</buildArg>
               </buildArgs>
               <metadataRepository>
                 <enabled>true</enabled>
               </metadataRepository>
+              <agent>
+                <enabled>true</enabled>
+              </agent>
             </configuration>
           </plugin>
         </plugins>
@@ -258,16 +234,6 @@
           <groupId>commons-cli</groupId>
           <artifactId>commons-cli</artifactId>
           <version>1.6.0</version>
-        </dependency>
-        <dependency>
-          <groupId>org.owasp</groupId>
-          <artifactId>dependency-check-core</artifactId>
-          <version>12.2.0</version>
-        </dependency>
-        <dependency>
-          <groupId>com.h2database</groupId>
-          <artifactId>h2</artifactId>
-          <version>2.2.224</version>
         </dependency>
         <dependency>
           <groupId>com.fasterxml.jackson.core</groupId>
@@ -300,18 +266,6 @@
         </plugins>
       </build>
       <dependencies>
-        <dependency>
-          <groupId>org.owasp</groupId>
-          <artifactId>dependency-check-core</artifactId>
-          <version>12.2.0</version>
-          <scope>provided</scope>
-        </dependency>
-        <dependency>
-          <groupId>com.h2database</groupId>
-          <artifactId>h2</artifactId>
-          <version>2.2.224</version>
-          <scope>provided</scope>
-        </dependency>
         <dependency>
           <groupId>com.fasterxml.jackson.core</groupId>
           <artifactId>jackson-databind</artifactId>
