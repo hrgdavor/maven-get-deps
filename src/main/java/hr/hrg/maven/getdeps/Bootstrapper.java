@@ -24,6 +24,8 @@ public class Bootstrapper {
         LocalRepository localRepo = new LocalRepository(localRepoPath);
         session.setLocalRepositoryManager(system.newLocalRepositoryManager(session, localRepo));
 
+        session.setSystemProperties(System.getProperties());
+
         return session;
     }
 

@@ -67,6 +67,9 @@ public class Main {
         options.addOption(new Option("ex", "exclude-cp", true,
                 "Comma-separated list of artifact IDs (G:A) or relative paths to exclude from the classpath."));
 
+        options.addOption(new Option("is", "include-siblings", false,
+                "Include artifacts from the same groupId as the project (default: false)"));
+
         CommandLineParser parser = new DefaultParser();
         HelpFormatter formatter = new HelpFormatter();
 
@@ -126,9 +129,11 @@ public class Main {
 
             File pomFile = artifactCoords != null || inputPath != null ? null : new File(pomPath);
 
+            boolean includeSiblingsArg = cmd.hasOption("include-siblings");
+
             run(destDir, pomPath, artifactCoords, inputPath, outputPath, reportPath, cachePath, scopesStr, copyJars,
                     classpathMode,
-                    extraClasspathFile, excludes);
+                    extraClasspathFile, excludes, includeSiblingsArg);
 
         } catch (ParseException e) {
             System.out.println(e.getMessage());
@@ -144,7 +149,7 @@ public class Main {
             String reportPath,
             String cachePath,
             String scopesStr, boolean copyJars, boolean classpathMode,
-            String extraClasspathFile, String excludes) throws Exception {
+            String extraClasspathFile, String excludes, boolean includeSiblings) throws Exception {
 
         Model model;
         RepositorySystem system = Bootstrapper.newRepositorySystem();
@@ -163,11 +168,10 @@ public class Main {
         // Always add Central
         List<RemoteRepository> repos = Bootstrapper.newRepositories(system, session, sourceRepoPath);
 
-        if (copyJars && destDir != null) {
-            repos.add(0,
-                    new RemoteRepository.Builder("local-cache", "default", new File(sourceRepoPath).toURI().toString())
-                            .build());
-        }
+        // Always add local-cache to repositories to ensure transitives of local artifacts are found
+        repos.add(0,
+                new RemoteRepository.Builder("local-cache", "default", new File(sourceRepoPath).toURI().toString())
+                        .build());
 
         if (artifactCoords != null) {
             DependencyFormatInfo info = FormatConverter.parse(artifactCoords);
@@ -202,6 +206,11 @@ public class Main {
 
         Set<String> excludeSet = DependencyResolverService.normalizeExcludes(excludes);
 
+        String projectGroupId = model.getGroupId();
+        if (projectGroupId == null && model.getParent() != null) {
+            projectGroupId = model.getParent().getGroupId();
+        }
+
         DependencyResolverService.ResolutionResult result = DependencyResolverService.resolve(
                 system,
                 session,
@@ -210,7 +219,9 @@ public class Main {
                 Main::resolveProperty,
                 model,
                 scopes,
-                excludeSet);
+                excludeSet,
+                projectGroupId,
+                includeSiblings);
 
         if (outputPath != null) {
             try (PrintWriter writer = new PrintWriter(new File(outputPath))) {
@@ -243,7 +254,7 @@ public class Main {
 
         if (reportPath != null) {
             DependencyResolverService.ReportResult report = DependencyResolverService.resolveReport(
-                    system, session, repos, model.getDependencies(), Main::resolveProperty, model, scopes, excludeSet);
+                    system, session, repos, model.getDependencies(), Main::resolveProperty, model, scopes, excludeSet, projectGroupId, includeSiblings);
 
             try (PrintWriter writer = new PrintWriter(new File(reportPath))) {
                 writer.print(report.formatMarkdownTable());

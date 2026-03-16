@@ -94,7 +94,9 @@ public class DependencyResolverService {
             java.util.function.BiFunction<String, org.apache.maven.model.Model, String> propertyResolver,
             org.apache.maven.model.Model model,
             Set<String> scopes,
-            Set<String> excludeSet) throws Exception {
+            Set<String> excludeSet,
+            String projectGroupId,
+            boolean includeSiblings) throws Exception {
 
         CollectRequest collectRequest = new CollectRequest();
         for (org.apache.maven.model.Dependency dep : dependencies) {
@@ -102,15 +104,13 @@ public class DependencyResolverService {
             if (scope == null)
                 scope = JavaScopes.COMPILE;
 
-            if (scopes.contains(scope)) {
-                String version = propertyResolver.apply(dep.getVersion(), model);
-                String groupId = propertyResolver.apply(dep.getGroupId(), model);
-                String artifactId = propertyResolver.apply(dep.getArtifactId(), model);
+            String version = propertyResolver.apply(dep.getVersion(), model);
+            String groupId = propertyResolver.apply(dep.getGroupId(), model);
+            String artifactId = propertyResolver.apply(dep.getArtifactId(), model);
 
-                collectRequest.addDependency(new Dependency(
-                        new DefaultArtifact(groupId, artifactId, dep.getClassifier(), dep.getType(), version),
-                        scope));
-            }
+            collectRequest.addDependency(new Dependency(
+                    new DefaultArtifact(groupId, artifactId, dep.getClassifier(), dep.getType(), version),
+                    scope));
         }
         collectRequest.setRepositories(repos);
 
@@ -134,6 +134,11 @@ public class DependencyResolverService {
 
                 if (isExcluded(artifact.getGroupId(), artifact.getArtifactId(), normalizedPath, excludeSet)) {
                     totalSize -= file.length(); // Backtrack size as we are skipping it
+                    continue;
+                }
+
+                if (!includeSiblings && isSibling(artifact.getGroupId(), projectGroupId)) {
+                    totalSize -= file.length();
                     continue;
                 }
 
@@ -161,7 +166,9 @@ public class DependencyResolverService {
             java.util.function.BiFunction<String, org.apache.maven.model.Model, String> propertyResolver,
             org.apache.maven.model.Model model,
             Set<String> scopes,
-            Set<String> excludeSet) throws Exception {
+            Set<String> excludeSet,
+            String projectGroupId,
+            boolean includeSiblings) throws Exception {
 
         List<ReportEntry> entries = new ArrayList<>();
         java.util.Set<String> seenArtifacts = new java.util.HashSet<>();
@@ -172,56 +179,54 @@ public class DependencyResolverService {
             if (scope == null)
                 scope = JavaScopes.COMPILE;
 
-            if (scopes.contains(scope)) {
-                String version = propertyResolver.apply(dep.getVersion(), model);
-                String groupId = propertyResolver.apply(dep.getGroupId(), model);
-                String artifactId = propertyResolver.apply(dep.getArtifactId(), model);
-                String depId = groupId + ":" + artifactId + ":" + version;
+            String version = propertyResolver.apply(dep.getVersion(), model);
+            String groupId = propertyResolver.apply(dep.getGroupId(), model);
+            String artifactId = propertyResolver.apply(dep.getArtifactId(), model);
+            String depId = groupId + ":" + artifactId + ":" + version;
 
-                CollectRequest collectRequest = new CollectRequest();
-                collectRequest.addDependency(new Dependency(
-                        new DefaultArtifact(groupId, artifactId, dep.getClassifier(), dep.getType(), version),
-                        scope));
-                collectRequest.setRepositories(repos);
+            CollectRequest collectRequest = new CollectRequest();
+            collectRequest.addDependency(new Dependency(
+                    new DefaultArtifact(groupId, artifactId, dep.getClassifier(), dep.getType(), version),
+                    scope));
+            collectRequest.setRepositories(repos);
 
-                DependencyRequest dependencyRequest = new DependencyRequest(collectRequest,
-                        DependencyFilterUtils.classpathFilter(scopes.toArray(new String[0])));
+            DependencyRequest dependencyRequest = new DependencyRequest(collectRequest,
+                    DependencyFilterUtils.classpathFilter(scopes.toArray(new String[0])));
 
-                DependencyResult result = system.resolveDependencies(session, dependencyRequest);
-                long currentDepSize = 0;
+            DependencyResult result = system.resolveDependencies(session, dependencyRequest);
+            long currentDepSize = 0;
 
-                for (ArtifactResult artifactResult : result.getArtifactResults()) {
-                    Artifact artifact = artifactResult.getArtifact();
-                    String relativePath = session.getLocalRepositoryManager().getPathForLocalArtifact(artifact);
-                    if (isExcluded(artifact.getGroupId(), artifact.getArtifactId(), relativePath, excludeSet)) {
-                        continue;
-                    }
-
-                    String artifactIdStr = artifact.getGroupId() + ":" + artifact.getArtifactId() + ":"
-                            + artifact.getVersion() + ":" + artifact.getClassifier() + ":" + artifact.getExtension();
-
-                    if (!seenArtifacts.contains(artifactIdStr)) {
-                        File file = artifact.getFile();
-                        if (file != null) {
-                            currentDepSize += file.length();
-                        }
-
-                        // Also ensure POM is resolved/present and count its size
-                        Artifact pomArtifact = new DefaultArtifact(artifact.getGroupId(), artifact.getArtifactId(),
-                                artifact.getClassifier(), "pom", artifact.getVersion());
-                        ArtifactResult pomResult = system.resolveArtifact(session,
-                                new org.eclipse.aether.resolution.ArtifactRequest(pomArtifact, repos, null));
-                        if (pomResult.getArtifact().getFile() != null) {
-                            currentDepSize += pomResult.getArtifact().getFile().length();
-                        }
-
-                        seenArtifacts.add(artifactIdStr);
-                    }
+            for (ArtifactResult artifactResult : result.getArtifactResults()) {
+                Artifact artifact = artifactResult.getArtifact();
+                String relativePath = session.getLocalRepositoryManager().getPathForLocalArtifact(artifact);
+                if (isExcluded(artifact.getGroupId(), artifact.getArtifactId(), relativePath, excludeSet)) {
+                    continue;
                 }
 
-                entries.add(new ReportEntry(depId, currentDepSize));
-                totalSize += currentDepSize;
+                String artifactIdStr = artifact.getGroupId() + ":" + artifact.getArtifactId() + ":"
+                        + artifact.getVersion() + ":" + artifact.getClassifier() + ":" + artifact.getExtension();
+
+                if (!seenArtifacts.contains(artifactIdStr)) {
+                    File file = artifact.getFile();
+                    if (file != null) {
+                        currentDepSize += file.length();
+                    }
+
+                    // Also ensure POM is resolved/present and count its size
+                    Artifact pomArtifact = new DefaultArtifact(artifact.getGroupId(), artifact.getArtifactId(),
+                            artifact.getClassifier(), "pom", artifact.getVersion());
+                    ArtifactResult pomResult = system.resolveArtifact(session,
+                            new org.eclipse.aether.resolution.ArtifactRequest(pomArtifact, repos, null));
+                    if (pomResult.getArtifact().getFile() != null) {
+                        currentDepSize += pomResult.getArtifact().getFile().length();
+                    }
+
+                    seenArtifacts.add(artifactIdStr);
+                }
             }
+
+            entries.add(new ReportEntry(depId, currentDepSize));
+            totalSize += currentDepSize;
         }
 
         return new ReportResult(entries, totalSize);
@@ -257,7 +262,7 @@ public class DependencyResolverService {
                 .collect(java.util.stream.Collectors.toSet());
 
         return resolvePerDep(system, session, repos, model.getDependencies(),
-                (v, m) -> Bootstrapper.resolveProperty(v, m), model, scopes, new java.util.HashSet<>());
+                (v, m) -> Bootstrapper.resolveProperty(v, m), model, scopes, new java.util.HashSet<>(), null, true);
     }
 
     /**
@@ -284,7 +289,7 @@ public class DependencyResolverService {
                 .collect(java.util.stream.Collectors.toSet());
 
         return resolvePerDep(system, session, repos, model.getDependencies(),
-                (v, m) -> Bootstrapper.resolveProperty(v, m), model, scopes, new java.util.HashSet<>());
+                (v, m) -> Bootstrapper.resolveProperty(v, m), model, scopes, new java.util.HashSet<>(), null, true);
     }
 
     public static java.util.LinkedHashMap<String, List<String>> resolvePerDep(
@@ -295,7 +300,9 @@ public class DependencyResolverService {
             java.util.function.BiFunction<String, org.apache.maven.model.Model, String> propertyResolver,
             org.apache.maven.model.Model model,
             Set<String> scopes,
-            Set<String> excludeSet) throws Exception {
+            Set<String> excludeSet,
+            String projectGroupId,
+            boolean includeSiblings) throws Exception {
 
         java.util.LinkedHashMap<String, List<String>> result = new java.util.LinkedHashMap<>();
 
@@ -303,8 +310,6 @@ public class DependencyResolverService {
             String scope = dep.getScope();
             if (scope == null)
                 scope = JavaScopes.COMPILE;
-            if (!scopes.contains(scope))
-                continue;
 
             String version = propertyResolver.apply(dep.getVersion(), model);
             String groupId = propertyResolver.apply(dep.getGroupId(), model);
@@ -413,5 +418,11 @@ public class DependencyResolverService {
                 return true;
         }
         return false;
+    }
+
+    public static boolean isSibling(String groupId, String projectGroupId) {
+        if (projectGroupId == null || groupId == null)
+            return false;
+        return groupId.equals(projectGroupId);
     }
 }

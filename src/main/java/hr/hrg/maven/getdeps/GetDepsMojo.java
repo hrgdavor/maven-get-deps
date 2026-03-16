@@ -62,6 +62,9 @@ public class GetDepsMojo extends AbstractMojo {
     @Parameter(property = "extra-cp")
     private File extraClasspath;
 
+    @Parameter(property = "includeSiblings", defaultValue = "false")
+    private boolean includeSiblings;
+
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
         try {
@@ -98,6 +101,11 @@ public class GetDepsMojo extends AbstractMojo {
 
             Set<String> scopeSet = StreamUtil.splitToSet(scopes, ",");
 
+            String projectGroupId = project.getModel().getGroupId();
+            if (projectGroupId == null && project.getModel().getParent() != null) {
+                projectGroupId = project.getModel().getParent().getGroupId();
+            }
+
             Set<String> excludeSet = DependencyResolverService.normalizeExcludes(excludeClasspath);
 
             DependencyResolverService.ResolutionResult result = DependencyResolverService.resolve(
@@ -108,7 +116,9 @@ public class GetDepsMojo extends AbstractMojo {
                     this::resolveProperty,
                     project.getModel(),
                     scopeSet,
-                    excludeSet);
+                    excludeSet,
+                    projectGroupId,
+                    includeSiblings);
 
             if (outputFile != null) {
                 try (PrintWriter writer = new PrintWriter(outputFile)) {
@@ -152,7 +162,7 @@ public class GetDepsMojo extends AbstractMojo {
             if (reportFile != null) {
                 DependencyResolverService.ReportResult report = DependencyResolverService.resolveReport(
                         repoSystem, session, effectiveRepos, project.getDependencies(), this::resolveProperty,
-                        project.getModel(), scopeSet, excludeSet);
+                        project.getModel(), scopeSet, excludeSet, project.getGroupId(), includeSiblings);
 
                 try (PrintWriter writer = new PrintWriter(reportFile)) {
                     writer.print(report.formatMarkdownTable());
