@@ -1,6 +1,21 @@
-# 🌀 Quest 3: The Chrono-Shifter's Leap - Masters of the Symlink Swap
+# 🌀 Adventure: The Chrono-Shifter's Leap - Masters of the Symlink Swap
 
-You have forged the artifacts and bound the sentinels. Now, you must learn to **Shift**. A Master of the Chrono-Leap can change the entire version of an empire in the blink of an eye without interrupting its inhabitants.
+Welcome, Traveler! Your domain is time and its flawless transitions. You have bound sentinels to the realm; now, you must master the trial of the **Gatekeeper**.
+
+> [!IMPORTANT]
+> **Requirements**: 💎 Crystalline Sentinel, [Tome of Temporal Shifting](./primers/chrono.md).
+
+> [!NOTE]
+> This adventure is a narrative companion to the **[Deployment Guide](../doc/README.usage-deploy.md)**.
+
+## 💎 Rewards Summary
+- **Seal of Mastery**: 🌀 Seal of the Gatekeeper.
+- **Weapons Gained**: 🗡️ Chrono-Key (Sword).
+- **Primary Loot**: `version_manager`, Atomic Swap protocols.
+- **Secondary Loot**: `gen_index`, "Developer's Blink" (Rsync) shortcuts.
+- **Experience**: +2500 Temporal Logistics.
+
+
 
 ---
 
@@ -92,7 +107,6 @@ version_manager manifest.json deploy v1.1.0
 ## 🎓 Graduation
 You have completed the Trilogy!
 
-- **Exp Gained**: +2500 Temporal Logistics.
-- **Title Earned**: *Master Chrono-Architect*.
+**Next Step**: Visit the **[Telekinetic Nexus](./README.md)** to explore other paths or the **[Tome of Knowledge](../README.md)** to start your own empire.
 
-**Final Step**: Visit the [Main Repository](../README.md) to start your own empire.
+

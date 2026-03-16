@@ -1,8 +1,8 @@
-## Project Overview
+## Philosophy: The Complexity of the Simple
 
-This project started small, but has evolved into a comprehensive toolset for streamlined deployment, version management, and OWASP database management (NVD is notoriously unstable). 
+On the surface, "running an application" is simple. You run a command, and the process starts. However, doing this **right**—with security in mind, automated deployment, atomic versioning, health tracking, and the ability to revert instantly—is a much more involved engineering task. 
 
-*We do these things not because they are easy, but because we thought they were going to be easy.*
+This project is dedicated to mastering that complexity by providing tools that turn these "simple" requirements into robust, automated realities.
 
 - browse [User Guides](#user-guides) for use cases and tool instructions
 -  use [Interactive Download Guide](https://hrgdavor.github.io/maven-get-deps/download.html) instead of the [GitHub Releases](https://github.com/hrgdavor/maven-get-deps/releases/latest) where there are many and it is confusing
@@ -66,7 +66,8 @@ Native binaries with zero dependencies, optimized for production runtime usage.
 
 | Guide | Description |
 |---|---|
-| **[Hero's Quest](quest/README.md)** (structured guide) | **The Telekinetic Nexus: A Trilogy (Java, Systemd, Versioning) to master the suite.** |
+| **[Interactive Nexus App](docs/nexus.html)** (Web App) | **The Unified Portal: Interactive progress tracking, achievements, and seamless doc/adventure navigation.** |
+| **[Adventures in Resolution](adventures/README.md)** (Markdown) | **The Telekinetic Nexus: Role-based paths (Architect, Warden, Gatekeeper) to master the suite.** |
 | [Deployment Philosophy](doc/README.usage-deploy.md) | Deploy thin JARs + a shared dep folder. Avoid fat JARs. |
 | [Systemd Daemon Guide](doc/README.systemd.md) | Deploy a Java daemon with `systemd` and atomic versioning. |
 | [Docker Integration (Dynamic)](doc/README.dynamic-docker.md) | Thin Docker images with a shared Maven cache. |

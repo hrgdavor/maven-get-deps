@@ -1,6 +1,21 @@
-# 🕯️ Quest 2: The Sentinel's Ritual - Conjuring the Systemd Spirits
+# 🕯️ Adventure: The Sentinel's Ritual - Conjuring the Systemd Spirits
 
-Master Architect, you have learned to forge. Now, you must learn to **Bind**. An application that exists only while you watch it is a flickering candle. To make it an eternal flame, you must summon a **Systemd Sentinel**.
+Welcome, Traveler! Your duty is to guard the stability and security of the realm. You have learned how artifacts are forged; now, you must seek the wisdom of the **Warden**.
+
+> [!IMPORTANT]
+> **Requirements**: 🛠️ Architect's Hammer, [Scroll of Systemd Binding](./primers/systemd.md).
+
+> [!NOTE]
+> This adventure is a narrative companion to the **[Systemd Guide](../doc/README.systemd.md)**.
+
+## 💎 Rewards Summary
+- **Seal of Mastery**: 🛡️ Seal of the Warden.
+- **Loot Gained**: 💎 Crystalline Sentinel (Gem).
+- **Primary Loot**: Systemd Unit File patterns, User Isolation rituals.
+- **Secondary Loot**: ACL Permission Warding, Sentinel monitoring.
+- **Experience**: +1500 Security Alchemy.
+
+
 
 ---
 
@@ -74,8 +89,6 @@ sudo systemctl enable sentinel-app
 
 ---
 
-## 🏆 Rewards
-- **Knowledge**: Service Users, Systemd Unit Files, ACL Permission Warding.
-- **Exp**: +1500 Security Alchemy.
+**Next Step**: Return to the **[Telekinetic Nexus](./README.md)** or proceed to **[The Chrono-Shifter's Leap](./chrono-shifter.md)**.
 
-**Next Step**: Return to the **[Telekinetic Nexus](./README.md)** and prepare for the final trial: **The Chrono-Shifter's Leap**.
+

@@ -1,6 +1,20 @@
-# 🔨 Quest 1: The Java Forge - Crafting Arcane JARs
+# 🔨 Adventure: The Java Forge - Crafting Arcane JARs
 
-Welcome, Apprentice! The first step to mastery is understanding how to forge your code into efficient artifacts. In this quest, you will practice your craft in the **[Multi-Module Examples](../examples/multi)** ruins.
+Welcome, Traveler! Your path continues. To build a lasting empire, you must first master the art of forging efficient artifacts. For this trial, you shall take up the **Architect's Mantle**.
+
+> [!IMPORTANT]
+> **Requirements**: [Scroll of Arcane Forging](./primers/forge.md).
+
+> [!NOTE]
+> This adventure is a narrative companion to the **[CLI Guide](../doc/README.cli.md)** and **[Maven Plugin Guide](../doc/README.maven-plugin.md)**.
+
+## 💎 Rewards Summary
+- **Seal of Mastery**: 🏛️ Seal of the Architect.
+- **Tools Gained**: 🛠️ Architect's Hammer.
+- **Primary Loot**: `maven-get-deps` (CLI & Maven Plugin).
+- **Secondary Loot**: Thin JAR extraction rituals, Zig Dispatcher speed.
+- **Experience**: +1000 Maven Mastery.
+
 
 ---
 
@@ -56,14 +70,13 @@ Before you deploy your loot, you must ensure it is not carrying any CVE curses. 
 
 **Your Task**: Run the sentinel `cve12` on the dependency manifest.
 ```bash
+# Run cve12 to check for vulnerabilities
 java -jar ../../cve12/target/cve12-cli.jar --input manifest.txt --report cve-report.md
 ```
 *Observe `cve-report.md`. If it reveals dark vulnerabilities, you must cleanse them (update versions) before proceeding.*
 
 ---
 
-## 🏆 Rewards
-- **Knowledge**: Multi-module builds, Thin JAR extraction, Zig vs Java resolution.
-- **Exp**: +1000 Maven Mastery.
+**Next Step**: Return to the **[Telekinetic Nexus](./README.md)** or proceed to **[The Sentinel's Ritual](./sentinel-ritual.md)**.
 
-**Next Step**: Return to the **[Telekinetic Nexus](./README.md)** and prepare for **The Sentinel's Ritual**.
+
