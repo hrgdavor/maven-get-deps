@@ -6,10 +6,12 @@ import org.eclipse.aether.artifact.Artifact;
 import org.eclipse.aether.artifact.DefaultArtifact;
 import org.eclipse.aether.collection.CollectRequest;
 import org.eclipse.aether.graph.Dependency;
+import org.eclipse.aether.graph.DependencyNode;
 import org.eclipse.aether.repository.RemoteRepository;
+import org.eclipse.aether.resolution.ArtifactRequest;
 import org.eclipse.aether.resolution.ArtifactResult;
-import org.eclipse.aether.resolution.DependencyRequest;
-import org.eclipse.aether.resolution.DependencyResult;
+import org.eclipse.aether.resolution.ArtifactResolutionException;
+import org.eclipse.aether.collection.DependencyCollectionException;
 import org.eclipse.aether.util.artifact.JavaScopes;
 import org.eclipse.aether.util.filter.DependencyFilterUtils;
 
@@ -96,7 +98,8 @@ public class DependencyResolverService {
             Set<String> scopes,
             Set<String> excludeSet,
             String projectGroupId,
-            boolean includeSiblings) throws Exception {
+            Set<String> reactorGAs,
+            boolean excludeSiblings) throws ArtifactResolutionException, DependencyCollectionException {
 
         CollectRequest collectRequest = new CollectRequest();
         for (org.apache.maven.model.Dependency dep : dependencies) {
@@ -108,21 +111,74 @@ public class DependencyResolverService {
             String groupId = propertyResolver.apply(dep.getGroupId(), model);
             String artifactId = propertyResolver.apply(dep.getArtifactId(), model);
 
+            String classifier = dep.getClassifier();
+            String extension = dep.getType();
+            if ("test-jar".equals(extension)) {
+                extension = "jar";
+                classifier = "tests";
+            }
+
             collectRequest.addDependency(new Dependency(
-                    new DefaultArtifact(groupId, artifactId, dep.getClassifier(), dep.getType(), version),
+                    new DefaultArtifact(groupId, artifactId, classifier, extension, version),
                     scope));
+        }
+
+        if (model.getDependencyManagement() != null) {
+            List<Dependency> managed = new ArrayList<>();
+            for (org.apache.maven.model.Dependency dep : model.getDependencyManagement().getDependencies()) {
+                String version = propertyResolver.apply(dep.getVersion(), model);
+                String groupId = propertyResolver.apply(dep.getGroupId(), model);
+                String artifactId = propertyResolver.apply(dep.getArtifactId(), model);
+                
+                String classifier = dep.getClassifier();
+                String extension = dep.getType();
+                if ("test-jar".equals(extension)) {
+                    extension = "jar";
+                    classifier = "tests";
+                }
+                
+                managed.add(new Dependency(
+                        new DefaultArtifact(groupId, artifactId, classifier, extension, version),
+                        dep.getScope(), dep.isOptional()));
+            }
+            collectRequest.setManagedDependencies(managed);
         }
         collectRequest.setRepositories(repos);
 
-        DependencyRequest dependencyRequest = new DependencyRequest(collectRequest,
-                DependencyFilterUtils.classpathFilter(scopes.toArray(new String[0])));
+        org.eclipse.aether.graph.DependencyFilter scopeFilter = DependencyFilterUtils.classpathFilter(scopes.toArray(new String[0]));
+        org.eclipse.aether.collection.CollectResult collectResult = system.collectDependencies(session, collectRequest);
 
-        DependencyResult result = system.resolveDependencies(session, dependencyRequest);
+        if (!collectResult.getExceptions().isEmpty()) {
+            for (Exception e : collectResult.getExceptions()) {
+                System.err.println("Collection error: " + e.getMessage());
+            }
+        }
+
+        List<DependencyNode> nodes = new java.util.ArrayList<>();
+        collectNodes(collectResult.getRoot(), new java.util.ArrayList<>(), scopeFilter, nodes, new java.util.HashSet<>());
+
+        List<ArtifactResult> artifactResults = new ArrayList<>();
+        for (DependencyNode node : nodes) {
+            Artifact artifact = node.getArtifact();
+            if (artifact == null) continue;
+            try {
+                artifactResults.add(system.resolveArtifact(session, new ArtifactRequest(artifact, repos, null)));
+            } catch (org.eclipse.aether.resolution.ArtifactResolutionException e) {
+                if (excludeSiblings && isSibling(artifact.getGroupId(), artifact.getArtifactId(), projectGroupId, reactorGAs)) {
+                    // If we are excluding siblings and this is a sibling, we don't throw an error,
+                    // but rather add a dummy result to allow processing to continue.
+                    // The artifact will be filtered out later.
+                    artifactResults.add(new ArtifactResult(new ArtifactRequest(artifact, repos, null)).setArtifact(artifact));
+                } else {
+                    throw e;
+                }
+            }
+        }
 
         List<String> relativePaths = new ArrayList<>();
         long totalSize = 0;
 
-        for (ArtifactResult artifactResult : result.getArtifactResults()) {
+        for (ArtifactResult artifactResult : artifactResults) {
             Artifact artifact = artifactResult.getArtifact();
             File file = artifact.getFile();
             if (file != null) {
@@ -137,7 +193,7 @@ public class DependencyResolverService {
                     continue;
                 }
 
-                if (!includeSiblings && isSibling(artifact.getGroupId(), projectGroupId)) {
+                if (excludeSiblings && isSibling(artifact.getGroupId(), artifact.getArtifactId(), projectGroupId, reactorGAs)) {
                     totalSize -= file.length();
                     continue;
                 }
@@ -168,7 +224,8 @@ public class DependencyResolverService {
             Set<String> scopes,
             Set<String> excludeSet,
             String projectGroupId,
-            boolean includeSiblings) throws Exception {
+            java.util.Set<String> reactorGAs,
+            boolean excludeSiblings) throws Exception {
 
         List<ReportEntry> entries = new ArrayList<>();
         java.util.Set<String> seenArtifacts = new java.util.HashSet<>();
@@ -190,16 +247,41 @@ public class DependencyResolverService {
                     scope));
             collectRequest.setRepositories(repos);
 
-            DependencyRequest dependencyRequest = new DependencyRequest(collectRequest,
-                    DependencyFilterUtils.classpathFilter(scopes.toArray(new String[0])));
+            org.eclipse.aether.graph.DependencyFilter scopeFilter = DependencyFilterUtils.classpathFilter(scopes.toArray(new String[0]));
+            org.eclipse.aether.collection.CollectResult collectResult = system.collectDependencies(session, collectRequest);
+            if (!collectResult.getExceptions().isEmpty()) {
+                for (Exception e : collectResult.getExceptions()) {
+                    System.err.println("Collection error: " + e.getMessage());
+                }
+            }
 
-            DependencyResult result = system.resolveDependencies(session, dependencyRequest);
+            List<DependencyNode> nodes = new java.util.ArrayList<>();
+            collectNodes(collectResult.getRoot(), new java.util.ArrayList<>(), scopeFilter, nodes, new java.util.HashSet<>());
+
+            List<ArtifactResult> artifactResults = new ArrayList<>();
+            for (DependencyNode node : nodes) {
+                Artifact artifact = node.getArtifact();
+                if (artifact == null) continue;
+                try {
+                    artifactResults.add(system.resolveArtifact(session, new ArtifactRequest(artifact, repos, null)));
+                } catch (org.eclipse.aether.resolution.ArtifactResolutionException e) {
+                    if (excludeSiblings && isSibling(artifact.getGroupId(), artifact.getArtifactId(), projectGroupId, reactorGAs)) {
+                        artifactResults.add(new ArtifactResult(new ArtifactRequest(artifact, repos, null)).setArtifact(artifact));
+                    } else {
+                        throw e;
+                    }
+                }
+            }
             long currentDepSize = 0;
 
-            for (ArtifactResult artifactResult : result.getArtifactResults()) {
+            for (ArtifactResult artifactResult : artifactResults) {
                 Artifact artifact = artifactResult.getArtifact();
                 String relativePath = session.getLocalRepositoryManager().getPathForLocalArtifact(artifact);
                 if (isExcluded(artifact.getGroupId(), artifact.getArtifactId(), relativePath, excludeSet)) {
+                    continue;
+                }
+
+                if (excludeSiblings && isSibling(artifact.getGroupId(), artifact.getArtifactId(), projectGroupId, reactorGAs)) {
                     continue;
                 }
 
@@ -262,7 +344,7 @@ public class DependencyResolverService {
                 .collect(java.util.stream.Collectors.toSet());
 
         return resolvePerDep(system, session, repos, model.getDependencies(),
-                (v, m) -> Bootstrapper.resolveProperty(v, m), model, scopes, new java.util.HashSet<>(), null, true);
+                (v, m) -> Bootstrapper.resolveProperty(v, m), model, scopes, new java.util.HashSet<>(), null, new java.util.HashSet<>(), false);
     }
 
     /**
@@ -289,7 +371,7 @@ public class DependencyResolverService {
                 .collect(java.util.stream.Collectors.toSet());
 
         return resolvePerDep(system, session, repos, model.getDependencies(),
-                (v, m) -> Bootstrapper.resolveProperty(v, m), model, scopes, new java.util.HashSet<>(), null, true);
+                (v, m) -> Bootstrapper.resolveProperty(v, m), model, scopes, new java.util.HashSet<>(), null, new java.util.HashSet<>(), false);
     }
 
     public static java.util.LinkedHashMap<String, List<String>> resolvePerDep(
@@ -302,6 +384,7 @@ public class DependencyResolverService {
             Set<String> scopes,
             Set<String> excludeSet,
             String projectGroupId,
+            java.util.Set<String> reactorGAs,
             boolean includeSiblings) throws Exception {
 
         java.util.LinkedHashMap<String, List<String>> result = new java.util.LinkedHashMap<>();
@@ -322,16 +405,39 @@ public class DependencyResolverService {
                     scope));
             collectRequest.setRepositories(repos);
 
-            DependencyRequest dependencyRequest = new DependencyRequest(collectRequest,
-                    DependencyFilterUtils.classpathFilter(scopes.toArray(new String[0])));
+            org.eclipse.aether.graph.DependencyFilter scopeFilter = DependencyFilterUtils.classpathFilter(scopes.toArray(new String[0]));
+            org.eclipse.aether.collection.CollectResult collectResult = system.collectDependencies(session, collectRequest);
+            if (!collectResult.getExceptions().isEmpty()) {
+                for (Exception e : collectResult.getExceptions()) {
+                    System.err.println("Collection error: " + e.getMessage());
+                }
+            }
 
-            DependencyResult depResult = system.resolveDependencies(session, dependencyRequest);
+            List<DependencyNode> nodes = new java.util.ArrayList<>();
+            collectNodes(collectResult.getRoot(), new java.util.ArrayList<>(), scopeFilter, nodes, new java.util.HashSet<>());
+
+            List<ArtifactResult> artifactResults = new ArrayList<>();
+            for (DependencyNode node : nodes) {
+                Artifact artifact = node.getArtifact();
+                if (artifact == null) continue;
+                try {
+                    artifactResults.add(system.resolveArtifact(session, new ArtifactRequest(artifact, repos, null)));
+                } catch (org.eclipse.aether.resolution.ArtifactResolutionException e) {
+                    if (includeSiblings || !isSibling(artifact.getGroupId(), artifact.getArtifactId(), projectGroupId, reactorGAs)) {
+                        throw e;
+                    }
+                    artifactResults.add(new ArtifactResult(new ArtifactRequest(artifact, repos, null)).setArtifact(artifact));
+                }
+            }
 
             List<String> coords = new ArrayList<>();
-            for (ArtifactResult artifactResult : depResult.getArtifactResults()) {
+            for (ArtifactResult artifactResult : artifactResults) {
                 Artifact artifact = artifactResult.getArtifact();
                 String relativePath = session.getLocalRepositoryManager().getPathForLocalArtifact(artifact);
                 if (isExcluded(artifact.getGroupId(), artifact.getArtifactId(), relativePath, excludeSet)) {
+                    continue;
+                }
+                if (!includeSiblings && isSibling(artifact.getGroupId(), artifact.getArtifactId(), projectGroupId, reactorGAs)) {
                     continue;
                 }
                 coords.add(artifact.getGroupId() + ":" + artifact.getArtifactId() + ":" + artifact.getVersion());
@@ -420,9 +526,35 @@ public class DependencyResolverService {
         return false;
     }
 
-    public static boolean isSibling(String groupId, String projectGroupId) {
+    public static boolean isSibling(String groupId, String artifactId, String projectGroupId, Set<String> reactorGAs) {
+        if (reactorGAs != null && reactorGAs.contains(groupId + ":" + artifactId))
+            return true;
         if (projectGroupId == null || groupId == null)
             return false;
         return groupId.equals(projectGroupId);
+    }
+
+    private static void collectNodes(DependencyNode node,
+            List<DependencyNode> parents,
+            org.eclipse.aether.graph.DependencyFilter filter,
+            List<DependencyNode> nodes,
+            java.util.Set<String> seen) {
+        
+        if (filter == null || node.getDependency() == null || filter.accept(node, parents)) {
+            Artifact a = node.getArtifact();
+            if (a != null) {
+                String key = a.getGroupId() + ":" + a.getArtifactId() + ":" + a.getVersion() + ":" + a.getClassifier() + ":"
+                        + a.getExtension();
+                if (seen.add(key)) {
+                    nodes.add(node);
+                }
+            }
+        }
+
+        List<DependencyNode> nextParents = new ArrayList<>(parents);
+        nextParents.add(node);
+        for (DependencyNode child : node.getChildren()) {
+            collectNodes(child, nextParents, filter, nodes, seen);
+        }
     }
 }

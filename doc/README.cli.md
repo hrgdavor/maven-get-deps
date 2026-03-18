@@ -39,10 +39,11 @@ If you have compiled the tool with GraalVM (see [README.dev.md](README.dev.md)),
 | `-c, --cache <dir>` | Local Maven repository (default: `~/.m2/repository`). |
 | `-r, --report <file>` | Path to save the dependency size report (Markdown). |
 | `-ex, --exclude-cp <G:A>` | Comma-separated list of artifact IDs or paths to exclude. |
-| `-s, --scopes <scopes>` | Comma-separated list of scopes (default: `compile,runtime`). |
+| `-s, --scopes <scopes>` | Comma-separated list of scopes (default: `runtime`). |
 | `-cp, --classpath` | Output as a valid OS-specific `CLASSPATH` string. |
 | `-cf, --convert-format <fmt>` | Convert input file format: `colon` or `path`. |
 | `-ecp, --extra-classpath <f>` | File containing additional classpath entries to append. |
+| `-es, --exclude-siblings` | Exclude artifacts from the same reactor (default: `false`). |
 | `-v, --version` | Show tool version. |
 
 ## 📖 Key Features

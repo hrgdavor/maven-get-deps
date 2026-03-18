@@ -7,7 +7,7 @@ The `maven-get-deps` plugin allows you to integrate dependency resolution direct
 Run the plugin directly from the terminal to resolve or copy dependencies:
 
 ```bash
-mvn hr.hrg:maven-get-deps:1.0.0:get-deps -DdestDir=lib -DcopyJars=true -DoutputFile=deps.txt
+mvn hr.hrg:maven-get-deps:1.0.1:get-deps -DdestDir=lib -DcopyJars=true -DoutputFile=deps.txt
 ```
 
 ## ⚙️ Configuration Parameters
@@ -17,10 +17,11 @@ mvn hr.hrg:maven-get-deps:1.0.0:get-deps -DdestDir=lib -DcopyJars=true -DoutputF
 | `destDir` | Directory for listing/copying artifacts |
 | `copyJars` | Copy JARs to `destDir` (default: `false`) |
 | `outputFile` | Save dependency list to file |
-| `scopes` | Scopes to include (default: `compile,runtime`) |
+| `scopes` | Scopes to include (default: `runtime`) |
 | `reportFile` | Markdown dependency-size report |
 | `classpath` | Output as OS-separated `CLASSPATH` string (default: `false`) |
 | `cache` | Override local Maven repository path |
+| `excludeSiblings` | Exclude artifacts from the same reactor (default: `false`) |
 
 ## 📖 Features
 

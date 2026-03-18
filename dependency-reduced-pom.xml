@@ -5,7 +5,7 @@
   <artifactId>maven-get-deps</artifactId>
   <packaging>maven-plugin</packaging>
   <name>Maven Get Deps</name>
-  <version>1.0.0</version>
+  <version>1.0.1</version>
   <description>A tool and Maven plugin to resolve and copy dependencies to a standalone directory with interchangeable relative paths.</description>
   <url>https://github.com/hrgdavor/maven-get-deps</url>
   <developers>
@@ -105,29 +105,6 @@
             <exclude>hr/hrg/maven/getdeps/GetDepsMojo.java</exclude>
           </sourceFileExcludes>
           <skip>true</skip>
-        </configuration>
-      </plugin>
-      <plugin>
-        <artifactId>maven-gpg-plugin</artifactId>
-        <version>3.1.0</version>
-        <executions>
-          <execution>
-            <id>sign-artifacts</id>
-            <phase>verify</phase>
-            <goals>
-              <goal>sign</goal>
-            </goals>
-          </execution>
-        </executions>
-      </plugin>
-      <plugin>
-        <groupId>org.sonatype.central</groupId>
-        <artifactId>central-publishing-maven-plugin</artifactId>
-        <version>0.4.0</version>
-        <extensions>true</extensions>
-        <configuration>
-          <publishingServerId>central</publishingServerId>
-          <tokenAuth>true</tokenAuth>
         </configuration>
       </plugin>
     </plugins>

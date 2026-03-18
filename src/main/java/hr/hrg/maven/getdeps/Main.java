@@ -4,14 +4,12 @@ import org.apache.commons.cli.*;
 import org.apache.maven.model.Model;
 import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystem;
-import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.repository.RemoteRepository;
 
 import java.io.File;
 import java.io.PrintWriter;
 import java.util.List;
 import java.util.Set;
-import java.util.ArrayList;
 
 public class Main {
 
@@ -51,7 +49,7 @@ public class Main {
         options.addOption(cacheOpt);
 
         options.addOption(new Option("s", "scopes", true,
-                "Comma-separated list of scopes to include (default: compile,runtime)"));
+                "Comma-separated list of scopes to include (default: runtime)"));
         options.addOption(new Option("n", "no-copy", false, "Disable copying to dest-dir (even if provided)"));
 
         Option convertOpt = new Option("cf", "convert-format", true,
@@ -67,9 +65,8 @@ public class Main {
         options.addOption(new Option("ex", "exclude-cp", true,
                 "Comma-separated list of artifact IDs (G:A) or relative paths to exclude from the classpath."));
 
-        options.addOption(new Option("is", "include-siblings", false,
-                "Include artifacts from the same groupId as the project (default: false)"));
-
+        options.addOption(new Option("es", "exclude-siblings", false,
+                "Exclude artifacts from the same groupId as the project (default: false)"));
         CommandLineParser parser = new DefaultParser();
         HelpFormatter formatter = new HelpFormatter();
 
@@ -88,15 +85,21 @@ public class Main {
             java.util.List<String> argList = cmd.getArgList();
             if (!argList.isEmpty()) {
                 String arg = argList.get(0);
-                File file = new File(arg);
-                if (file.exists()) {
+                File f = new File(arg);
+                if (f.isDirectory()) {
+                    File pomFileInDir = new File(f, "pom.xml");
+                    if (pomFileInDir.exists()) {
+                        pomPath = pomFileInDir.getAbsolutePath();
+                    } else {
+                        System.err.println("Error: Directory '" + arg + "' does not contain a pom.xml.");
+                        System.exit(1);
+                    }
+                } else if (f.isFile()) {
                     if (arg.endsWith(".xml")) {
                         pomPath = arg;
                     } else {
                         inputPath = arg;
                     }
-                } else if (arg.endsWith(".xml")) {
-                    pomPath = arg;
                 } else if (arg.contains(":")) {
                     artifactCoords = arg;
                 } else {
@@ -115,7 +118,7 @@ public class Main {
             String extraClasspathFile = cmd.getOptionValue("extra-classpath");
             String excludes = cmd.getOptionValue("exclude-cp");
 
-            String scopesStr = cmd.getOptionValue("scopes", "compile,runtime");
+            String scopesStr = cmd.getOptionValue("scopes", "runtime");
             boolean copyJars = !cmd.hasOption("no-copy");
             boolean classpathMode = cmd.hasOption("classpath");
 
@@ -127,13 +130,12 @@ public class Main {
             String destDir = cmd.getOptionValue("dest-dir");
             String reportPath = cmd.getOptionValue("report");
 
-            File pomFile = artifactCoords != null || inputPath != null ? null : new File(pomPath);
 
-            boolean includeSiblingsArg = cmd.hasOption("include-siblings");
-
+            boolean excludeSiblings = cmd.hasOption("exclude-siblings");
+ 
             run(destDir, pomPath, artifactCoords, inputPath, outputPath, reportPath, cachePath, scopesStr, copyJars,
                     classpathMode,
-                    extraClasspathFile, excludes, includeSiblingsArg);
+                    extraClasspathFile, excludes, excludeSiblings);
 
         } catch (ParseException e) {
             System.out.println(e.getMessage());
@@ -149,7 +151,7 @@ public class Main {
             String reportPath,
             String cachePath,
             String scopesStr, boolean copyJars, boolean classpathMode,
-            String extraClasspathFile, String excludes, boolean includeSiblings) throws Exception {
+            String extraClasspathFile, String excludes, boolean excludeSiblings) throws Exception {
 
         Model model;
         RepositorySystem system = Bootstrapper.newRepositorySystem();
@@ -157,18 +159,51 @@ public class Main {
         String defaultM2 = System.getProperty("user.home") + "/.m2/repository";
         String sourceRepoPath = (cachePath != null) ? cachePath : defaultM2;
 
+        String projectGroupId = null;
+        if (pomPath != null) {
+            projectGroupId = Bootstrapper.peekGroupId(new File(pomPath));
+        } else if (artifactCoords != null) {
+            DependencyFormatInfo info = FormatConverter.parse(artifactCoords);
+            if (info != null) projectGroupId = info.groupId();
+        }
+
         String sessionLocalRepoPath = (copyJars && destDir != null) ? destDir : sourceRepoPath;
-        RepositorySystemSession session = Bootstrapper.newRepositorySystemSession(system, sessionLocalRepoPath);
+        DefaultRepositorySystemSession session = (DefaultRepositorySystemSession) Bootstrapper.newRepositorySystemSession(system, sessionLocalRepoPath);
+
+        Bootstrapper.ReactorWorkspaceReader reactor = new Bootstrapper.ReactorWorkspaceReader();
+        if (pomPath != null) {
+            File pomFile = new File(pomPath);
+            File rootPom = Bootstrapper.findReactorRoot(pomFile);
+            if (rootPom != null) {
+                System.out.println("Reactor root found: " + rootPom);
+                Bootstrapper.registerReactor(rootPom, reactor);
+            } else {
+                reactor.registerPom(pomFile);
+            }
+        }
+        session.setWorkspaceReader(reactor);
+
+        java.util.Set<String> reactorGAs = reactor.getRegisteredGAs();
+
+        if (projectGroupId != null) {
+            java.util.Set<String> allowedRepos = new java.util.HashSet<>();
+            allowedRepos.add("local-cache");
+            ((DefaultRepositorySystemSession) session).setRepositoryListener(
+                    new Bootstrapper.SiblingBlockerRepositoryListener(reactorGAs, allowedRepos));
+        }
 
         if (outputPath != null) {
-            ((DefaultRepositorySystemSession) session)
-                    .setRepositoryListener(new Bootstrapper.LoggingRepositoryListener());
+            // If we have an output path, we might want both listeners? 
+            // Better to wrap or just use the blocker if we have a projectGroupId.
+            // Actually, for simplicity, I'll just use the blocker.
         }
 
         // Always add Central
         List<RemoteRepository> repos = Bootstrapper.newRepositories(system, session, sourceRepoPath);
 
         // Always add local-cache to repositories to ensure transitives of local artifacts are found
+        // The WorkspaceReader in the session will handle projectGroupId artifacts specifically,
+        // but other artifacts might still be needed from the local cache if they aren't in Central.
         repos.add(0,
                 new RemoteRepository.Builder("local-cache", "default", new File(sourceRepoPath).toURI().toString())
                         .build());
@@ -206,10 +241,6 @@ public class Main {
 
         Set<String> excludeSet = DependencyResolverService.normalizeExcludes(excludes);
 
-        String projectGroupId = model.getGroupId();
-        if (projectGroupId == null && model.getParent() != null) {
-            projectGroupId = model.getParent().getGroupId();
-        }
 
         DependencyResolverService.ResolutionResult result = DependencyResolverService.resolve(
                 system,
@@ -221,7 +252,8 @@ public class Main {
                 scopes,
                 excludeSet,
                 projectGroupId,
-                includeSiblings);
+                reactorGAs,
+                excludeSiblings);
 
         if (outputPath != null) {
             try (PrintWriter writer = new PrintWriter(new File(outputPath))) {
@@ -254,7 +286,7 @@ public class Main {
 
         if (reportPath != null) {
             DependencyResolverService.ReportResult report = DependencyResolverService.resolveReport(
-                    system, session, repos, model.getDependencies(), Main::resolveProperty, model, scopes, excludeSet, projectGroupId, includeSiblings);
+                    system, session, repos, model.getDependencies(), Main::resolveProperty, model, scopes, excludeSet, projectGroupId, reactorGAs, excludeSiblings);
 
             try (PrintWriter writer = new PrintWriter(new File(reportPath))) {
                 writer.print(report.formatMarkdownTable());

@@ -11,6 +11,12 @@ import org.eclipse.aether.supplier.RepositorySystemSupplier;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+
+import org.eclipse.aether.repository.WorkspaceReader;
+import org.eclipse.aether.repository.WorkspaceRepository;
+import java.util.HashMap;
+import java.util.Map;
 
 public class Bootstrapper {
 
@@ -27,6 +33,123 @@ public class Bootstrapper {
         session.setSystemProperties(System.getProperties());
 
         return session;
+    }
+
+    public static class ReactorWorkspaceReader implements WorkspaceReader {
+        private final WorkspaceRepository repository = new WorkspaceRepository("reactor");
+        private final Map<String, File> pomMap = new HashMap<>();
+        private final Map<String, File> gaMap = new HashMap<>();
+        private final java.util.Set<String> gaSet = new java.util.HashSet<>();
+
+        public void registerPom(File pomFile) {
+            try {
+                javax.xml.parsers.DocumentBuilderFactory factory = javax.xml.parsers.DocumentBuilderFactory.newInstance();
+                javax.xml.parsers.DocumentBuilder builder = factory.newDocumentBuilder();
+                org.w3c.dom.Document doc = builder.parse(pomFile);
+                org.w3c.dom.Element root = doc.getDocumentElement();
+
+                String groupId = getChild(root, "groupId");
+                String artifactId = getChild(root, "artifactId");
+                String version = getChild(root, "version");
+
+                if (groupId == null || version == null) {
+                    org.w3c.dom.Node parentNode = getChildNode(root, "parent");
+                    if (parentNode != null) {
+                        if (groupId == null) groupId = getChild(parentNode, "groupId");
+                        if (version == null) version = getChild(parentNode, "version");
+                    }
+                }
+
+                if (groupId != null && artifactId != null) {
+                    String ga = groupId + ":" + artifactId;
+                    gaMap.put(ga, pomFile);
+                    gaSet.add(ga);
+                    if (version != null) {
+                        String key = ga + ":" + version;
+                        pomMap.put(key, pomFile);
+                        // System.out.println("Registered reactor module: " + key + " -> " + pomFile);
+                    } else {
+                        // System.out.println("Registered reactor module (no version): " + ga + " -> " + pomFile);
+                    }
+                }
+            } catch (Exception e) {
+                // ignore
+            }
+        }
+
+        private String getChild(org.w3c.dom.Node node, String localName) {
+            org.w3c.dom.Node child = getChildNode(node, localName);
+            return child == null ? null : child.getTextContent().trim();
+        }
+
+        private org.w3c.dom.Node getChildNode(org.w3c.dom.Node node, String localName) {
+            org.w3c.dom.NodeList nl = node.getChildNodes();
+            for (int i = 0; i < nl.getLength(); i++) {
+                org.w3c.dom.Node n = nl.item(i);
+                if (n.getNodeType() == org.w3c.dom.Node.ELEMENT_NODE) {
+                    String name = n.getNodeName();
+                    int idx = name.indexOf(':');
+                    if (idx != -1) name = name.substring(idx + 1);
+                    if (localName.equals(name)) return n;
+                }
+            }
+            return null;
+        }
+
+        public java.util.Set<String> getRegisteredGAs() {
+            return gaSet;
+        }
+
+        @Override
+        public WorkspaceRepository getRepository() {
+            return repository;
+        }
+
+        @Override
+        public File findArtifact(org.eclipse.aether.artifact.Artifact artifact) {
+            String key = artifact.getGroupId() + ":" + artifact.getArtifactId() + ":" + artifact.getVersion();
+            File pomFile = pomMap.get(key);
+            if (pomFile == null) {
+                // Fallback to GA only (useful if version is a property in the POM)
+                pomFile = gaMap.get(artifact.getGroupId() + ":" + artifact.getArtifactId());
+            }
+
+            if (pomFile == null) {
+                // System.out.println("  Reactor NOT found: " + artifact);
+                return null;
+            }
+            // System.out.println("  Reactor found artifact: " + artifact + " -> " + pomFile);
+
+            if ("pom".equals(artifact.getExtension())) return pomFile;
+
+            // For JARs and other types, look in target/
+            String classifier = artifact.getClassifier();
+            String filename = artifact.getArtifactId() + "-" + artifact.getVersion() +
+                (classifier != null && !classifier.isEmpty() ? "-" + classifier : "") +
+                "." + artifact.getExtension();
+            File targetFile = new File(new File(pomFile.getParentFile(), "target"), filename);
+            if (targetFile.exists()) return targetFile;
+
+            // Fallback to target/classes if JAR not found (useful for siblings not yet packaged)
+            File classesDir = new File(new File(pomFile.getParentFile(), "target"), "classes");
+            if (classesDir.exists() && classesDir.isDirectory()) return classesDir;
+
+            return null;
+        }
+
+        @Override
+        public List<String> findVersions(org.eclipse.aether.artifact.Artifact artifact) {
+            String key = artifact.getGroupId() + ":" + artifact.getArtifactId() + ":" + artifact.getVersion();
+            if (pomMap.containsKey(key)) {
+                return java.util.Collections.singletonList(artifact.getVersion());
+            }
+            // Fallback to GA only
+            if (gaMap.containsKey(artifact.getGroupId() + ":" + artifact.getArtifactId())) {
+                return java.util.Collections.singletonList(artifact.getVersion());
+            }
+            // System.out.println("  Reactor NOT found version: " + artifact);
+            return java.util.Collections.emptyList();
+        }
     }
 
     public static class LoggingRepositoryListener extends org.eclipse.aether.AbstractRepositoryListener {
@@ -123,8 +246,11 @@ public class Bootstrapper {
             return value;
         if ("${project.version}".equals(value) || "${version}".equals(value))
             return model.getVersion();
-        if ("${project.groupId}".equals(value) || "${groupId}".equals(value))
-            return model.getGroupId();
+        if ("${project.groupId}".equals(value) || "${groupId}".equals(value)) {
+            String gid = model.getGroupId();
+            if (gid == null && model.getParent() != null) gid = model.getParent().getGroupId();
+            return gid;
+        }
         if ("${project.artifactId}".equals(value) || "${artifactId}".equals(value))
             return model.getArtifactId();
 
@@ -139,6 +265,72 @@ public class Bootstrapper {
         return value;
     }
 
+    public static File findReactorRoot(File pomFile) {
+        File currentPom = pomFile.getAbsoluteFile();
+        File lastValidPom = currentPom;
+        while (currentPom != null && currentPom.exists()) {
+            lastValidPom = currentPom;
+            File parentDir = currentPom.getParentFile();
+            if (parentDir == null) break;
+            File grandDir = parentDir.getParentFile();
+            if (grandDir == null) break;
+            currentPom = new File(grandDir, "pom.xml");
+        }
+        return lastValidPom;
+    }
+
+    public static void registerReactor(File rootPom, ReactorWorkspaceReader reactor) {
+        reactor.registerPom(rootPom);
+        File rootDir = rootPom.getParentFile();
+        if (rootDir != null) {
+            registerModules(rootDir, reactor);
+        }
+    }
+
+    private static void registerModules(File dir, ReactorWorkspaceReader reactor) {
+        File[] children = dir.listFiles();
+        if (children == null) return;
+        for (File child : children) {
+            if (child.isDirectory()) {
+                File pom = new File(child, "pom.xml");
+                if (pom.exists()) {
+                    reactor.registerPom(pom);
+                    registerModules(child, reactor);
+                }
+            }
+        }
+    }
+
+    public static String peekGroupId(File pomFile) {
+        try {
+            javax.xml.parsers.DocumentBuilderFactory factory = javax.xml.parsers.DocumentBuilderFactory.newInstance();
+            javax.xml.parsers.DocumentBuilder builder = factory.newDocumentBuilder();
+            org.w3c.dom.Document doc = builder.parse(pomFile);
+            org.w3c.dom.Element root = doc.getDocumentElement();
+            
+            // Try direct groupId
+            org.w3c.dom.NodeList nl = root.getChildNodes();
+            for(int i=0; i<nl.getLength(); i++) {
+                org.w3c.dom.Node n = nl.item(i);
+                if("groupId".equals(n.getNodeName())) return n.getTextContent().trim();
+            }
+            // Try parent groupId
+            for(int i=0; i<nl.getLength(); i++) {
+                org.w3c.dom.Node n = nl.item(i);
+                if("parent".equals(n.getNodeName())) {
+                    org.w3c.dom.NodeList pnl = n.getChildNodes();
+                    for(int j=0; j<pnl.getLength(); j++) {
+                        org.w3c.dom.Node pn = pnl.item(j);
+                        if("groupId".equals(pn.getNodeName())) return pn.getTextContent().trim();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // ignore
+        }
+        return null;
+    }
+
     public static List<RemoteRepository> newRepositories(RepositorySystem system, RepositorySystemSession session) {
         return newRepositories(system, session, null);
     }
@@ -148,6 +340,26 @@ public class Bootstrapper {
         List<RemoteRepository> repose = new ArrayList<>();
         repose.add(new RemoteRepository.Builder("central", "default", "https://repo1.maven.org/maven2/").build());
         return repose;
+    }
+
+    public static class SiblingBlockerRepositoryListener extends org.eclipse.aether.AbstractRepositoryListener {
+        private final Set<String> reactorGAs;
+        private final Set<String> allowedRepoIds;
+
+        public SiblingBlockerRepositoryListener(Set<String> reactorGAs, Set<String> allowedRepoIds) {
+            this.reactorGAs = reactorGAs;
+            this.allowedRepoIds = allowedRepoIds;
+        }
+
+        @Override
+        public void artifactDownloading(org.eclipse.aether.RepositoryEvent event) {
+            String ga = event.getArtifact().getGroupId() + ":" + event.getArtifact().getArtifactId();
+            if (reactorGAs != null && reactorGAs.contains(ga)) {
+                if (event.getRepository() != null && !allowedRepoIds.contains(event.getRepository().getId())) {
+                    System.err.println("BLOCKING download of sibling from " + event.getRepository().getId() + ": " + event.getArtifact());
+                }
+            }
+        }
     }
 
     public static List<RemoteRepository> convertRepositories(List<org.apache.maven.model.Repository> repositories) {

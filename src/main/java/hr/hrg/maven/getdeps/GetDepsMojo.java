@@ -41,7 +41,7 @@ public class GetDepsMojo extends AbstractMojo {
     @Parameter(property = "outputFile")
     private File outputFile;
 
-    @Parameter(property = "scopes", defaultValue = "compile,runtime")
+    @Parameter(property = "scopes", defaultValue = "runtime")
     private String scopes;
 
     @Parameter(property = "reportFile")
@@ -62,8 +62,8 @@ public class GetDepsMojo extends AbstractMojo {
     @Parameter(property = "extra-cp")
     private File extraClasspath;
 
-    @Parameter(property = "includeSiblings", defaultValue = "false")
-    private boolean includeSiblings;
+    @Parameter(property = "excludeSiblings", defaultValue = "false")
+    private boolean excludeSiblings;
 
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
@@ -83,28 +83,46 @@ public class GetDepsMojo extends AbstractMojo {
             // If we are copying, we use a copy of the session pointing to destDir as the
             // "local repo"
             // Otherwise, we use the standard session (source)
-            RepositorySystemSession session = repoSession;
+            DefaultRepositorySystemSession session = new DefaultRepositorySystemSession(repoSession);
             if (performCopy) {
-                DefaultRepositorySystemSession newSession = new DefaultRepositorySystemSession(repoSession);
-                newSession.setLocalRepositoryManager(repoSystem.newLocalRepositoryManager(newSession,
+                session.setLocalRepositoryManager(repoSystem.newLocalRepositoryManager(session,
                         new LocalRepository(destDir.getAbsolutePath())));
-                session = newSession;
             }
-
-            // When copying, we add the original local repository as a "remote" cache source
-            List<RemoteRepository> effectiveRepos = new ArrayList<>(remoteRepos);
-            if (performCopy) {
-                effectiveRepos.add(0,
-                        new RemoteRepository.Builder("local-cache", "default", sourceRepoBase.toURI().toString())
-                                .build());
-            }
-
-            Set<String> scopeSet = StreamUtil.splitToSet(scopes, ",");
 
             String projectGroupId = project.getModel().getGroupId();
             if (projectGroupId == null && project.getModel().getParent() != null) {
                 projectGroupId = project.getModel().getParent().getGroupId();
             }
+
+            java.util.Set<String> reactorGAs = new java.util.HashSet<>();
+            if (project.getCollectedProjects() != null) {
+                for (MavenProject p : project.getCollectedProjects()) {
+                    reactorGAs.add(p.getGroupId() + ":" + p.getArtifactId());
+                }
+            }
+            reactorGAs.add(project.getGroupId() + ":" + project.getArtifactId());
+
+            if (projectGroupId != null) {
+                java.util.Set<String> allowedRepos = new java.util.HashSet<>();
+                allowedRepos.add("local-cache");
+                session.setRepositoryListener(new Bootstrapper.SiblingBlockerRepositoryListener(reactorGAs, allowedRepos));
+            }
+
+            // Always add the original local repository as a "remote" cache source
+            // to ensure Aether's collectDependencies can find local POMs for siblings
+            List<RemoteRepository> effectiveRepos = new ArrayList<>(remoteRepos);
+            effectiveRepos.add(0,
+                    new RemoteRepository.Builder("local-cache", "default", sourceRepoBase.toURI().toString())
+                            .build());
+
+            Set<String> scopeSet = StreamUtil.splitToSet(scopes, ",");
+
+            // The projectGroupId is already defined and used above for WorkspaceReader.
+            // This redeclaration is redundant and can be removed.
+            // String projectGroupId = project.getModel().getGroupId();
+            // if (projectGroupId == null && project.getModel().getParent() != null) {
+            //     projectGroupId = project.getModel().getParent().getGroupId();
+            // }
 
             Set<String> excludeSet = DependencyResolverService.normalizeExcludes(excludeClasspath);
 
@@ -118,7 +136,8 @@ public class GetDepsMojo extends AbstractMojo {
                     scopeSet,
                     excludeSet,
                     projectGroupId,
-                    includeSiblings);
+                    reactorGAs,
+                    excludeSiblings);
 
             if (outputFile != null) {
                 try (PrintWriter writer = new PrintWriter(outputFile)) {
@@ -162,7 +181,7 @@ public class GetDepsMojo extends AbstractMojo {
             if (reportFile != null) {
                 DependencyResolverService.ReportResult report = DependencyResolverService.resolveReport(
                         repoSystem, session, effectiveRepos, project.getDependencies(), this::resolveProperty,
-                        project.getModel(), scopeSet, excludeSet, project.getGroupId(), includeSiblings);
+                        project.getModel(), scopeSet, excludeSet, projectGroupId, reactorGAs, excludeSiblings);
 
                 try (PrintWriter writer = new PrintWriter(reportFile)) {
                     writer.print(report.formatMarkdownTable());

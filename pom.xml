@@ -6,7 +6,7 @@
 
     <groupId>hr.hrg</groupId>
     <artifactId>maven-get-deps</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
     <packaging>maven-plugin</packaging>
 
     <name>Maven Get Deps</name>
@@ -196,6 +196,8 @@
                     <skip>true</skip>
                 </configuration>
             </plugin>
+<!--
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-gpg-plugin</artifactId>
@@ -220,6 +222,7 @@
                     <tokenAuth>true</tokenAuth>
                 </configuration>
             </plugin>
+-->
         </plugins>
     </build>
 
