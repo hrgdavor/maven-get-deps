@@ -55,6 +55,7 @@
                                     <goal>shade</goal>
                                 </goals>
                                 <configuration>
+                                    <finalName>maven-get-deps</finalName>
                                     <shadedArtifactAttached>true</shadedArtifactAttached>
                                     <shadedClassifierName>cli</shadedClassifierName>
                                     <filters>
