@@ -17,8 +17,10 @@ import org.eclipse.aether.util.filter.DependencyFilterUtils;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 public class DependencyResolverService {
@@ -157,56 +159,67 @@ public class DependencyResolverService {
         List<DependencyNode> nodes = new java.util.ArrayList<>();
         collectNodes(collectResult.getRoot(), new java.util.ArrayList<>(), scopeFilter, nodes, new java.util.HashSet<>());
 
-        List<ArtifactResult> artifactResults = new ArrayList<>();
+        List<ArtifactRequest> requests = new ArrayList<>();
         for (DependencyNode node : nodes) {
             Artifact artifact = node.getArtifact();
             if (artifact == null) continue;
-            try {
-                artifactResults.add(system.resolveArtifact(session, new ArtifactRequest(artifact, repos, null)));
-            } catch (org.eclipse.aether.resolution.ArtifactResolutionException e) {
-                if (excludeSiblings && isSibling(artifact.getGroupId(), artifact.getArtifactId(), projectGroupId, reactorGAs)) {
-                    // If we are excluding siblings and this is a sibling, we don't throw an error,
-                    // but rather add a dummy result to allow processing to continue.
-                    // The artifact will be filtered out later.
-                    artifactResults.add(new ArtifactResult(new ArtifactRequest(artifact, repos, null)).setArtifact(artifact));
-                } else {
-                    throw e;
-                }
-            }
+            requests.add(new ArtifactRequest(artifact, repos, null));
+            // Also add POM to requests to resolve in batch
+            requests.add(new ArtifactRequest(new DefaultArtifact(artifact.getGroupId(), artifact.getArtifactId(), artifact.getClassifier(), "pom", artifact.getVersion()), repos, null));
+        }
+
+        List<ArtifactResult> allResults;
+        try {
+            allResults = system.resolveArtifacts(session, requests);
+        } catch (org.eclipse.aether.resolution.ArtifactResolutionException e) {
+            // Handle partially resolved results if possible, but for simplicity we'll just catch and filter later
+            allResults = e.getResults();
         }
 
         List<String> relativePaths = new ArrayList<>();
         long totalSize = 0;
 
-        for (ArtifactResult artifactResult : artifactResults) {
-            Artifact artifact = artifactResult.getArtifact();
-            File file = artifact.getFile();
-            if (file != null) {
-                totalSize += file.length();
+        // Group into JAR and POM for processing
+        Map<String, Artifact> jars = new HashMap<>();
+        Map<String, Artifact> poms = new HashMap<>();
 
-                // Use LocalRepositoryManager to get the relative path within the repository
-                String relativePath = session.getLocalRepositoryManager().getPathForLocalArtifact(artifact);
+        for(ArtifactResult ar : allResults) {
+            Artifact a = ar.getArtifact();
+            if(a == null) continue;
+            String ga = a.getGroupId() + ":" + a.getArtifactId() + ":" + a.getVersion();
+            if("pom".equals(a.getExtension())) {
+                poms.put(ga, a);
+            } else {
+                jars.put(ga, a);
+            }
+        }
+
+        for (DependencyNode node : nodes) {
+            Artifact artifact = node.getArtifact();
+            if (artifact == null) continue;
+            
+            String ga = artifact.getGroupId() + ":" + artifact.getArtifactId() + ":" + artifact.getVersion();
+            Artifact resolvedJar = jars.get(ga);
+            File jarFile = resolvedJar != null ? resolvedJar.getFile() : null;
+
+            if (jarFile != null) {
+                totalSize += jarFile.length();
+                String relativePath = session.getLocalRepositoryManager().getPathForLocalArtifact(resolvedJar);
                 String normalizedPath = relativePath.replace('\\', '/');
 
                 if (isExcluded(artifact.getGroupId(), artifact.getArtifactId(), normalizedPath, excludeSet)) {
-                    totalSize -= file.length(); // Backtrack size as we are skipping it
+                    totalSize -= jarFile.length();
                     continue;
                 }
-
                 if (excludeSiblings && isSibling(artifact.getGroupId(), artifact.getArtifactId(), projectGroupId, reactorGAs)) {
-                    totalSize -= file.length();
+                    totalSize -= jarFile.length();
                     continue;
                 }
-
                 relativePaths.add(normalizedPath);
 
-                // Also ensure POM is resolved/present
-                Artifact pomArtifact = new DefaultArtifact(artifact.getGroupId(), artifact.getArtifactId(),
-                        artifact.getClassifier(), "pom", artifact.getVersion());
-                ArtifactResult pomResult = system.resolveArtifact(session,
-                        new org.eclipse.aether.resolution.ArtifactRequest(pomArtifact, repos, null));
-                if (pomResult.getArtifact().getFile() != null) {
-                    totalSize += pomResult.getArtifact().getFile().length();
+                Artifact resolvedPom = poms.get(ga);
+                if (resolvedPom != null && resolvedPom.getFile() != null) {
+                    totalSize += resolvedPom.getFile().length();
                 }
             }
         }

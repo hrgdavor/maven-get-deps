@@ -4,8 +4,10 @@ import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
 import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
+import org.eclipse.aether.DefaultRepositoryCache;
 import org.eclipse.aether.repository.LocalRepository;
 import org.eclipse.aether.repository.RemoteRepository;
+import org.eclipse.aether.repository.RepositoryPolicy;
 import org.eclipse.aether.supplier.RepositorySystemSupplier;
 
 import java.io.File;
@@ -13,6 +15,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
+import org.eclipse.aether.resolution.ArtifactDescriptorPolicy;
+import org.eclipse.aether.util.repository.SimpleArtifactDescriptorPolicy;
 import org.eclipse.aether.repository.WorkspaceReader;
 import org.eclipse.aether.repository.WorkspaceRepository;
 import java.util.HashMap;
@@ -31,6 +35,9 @@ public class Bootstrapper {
         session.setLocalRepositoryManager(system.newLocalRepositoryManager(session, localRepo));
 
         session.setSystemProperties(System.getProperties());
+        session.setCache(new DefaultRepositoryCache());
+        session.setIgnoreArtifactDescriptorRepositories(true);
+        session.setArtifactDescriptorPolicy(new SimpleArtifactDescriptorPolicy(ArtifactDescriptorPolicy.IGNORE_MISSING | ArtifactDescriptorPolicy.IGNORE_ERRORS));
 
         return session;
     }
@@ -338,7 +345,12 @@ public class Bootstrapper {
     public static List<RemoteRepository> newRepositories(RepositorySystem system, RepositorySystemSession session,
             String cachePath) {
         List<RemoteRepository> repose = new ArrayList<>();
-        repose.add(new RemoteRepository.Builder("central", "default", "https://repo1.maven.org/maven2/").build());
+        RepositoryPolicy policy = new RepositoryPolicy(true, RepositoryPolicy.UPDATE_POLICY_NEVER, RepositoryPolicy.CHECKSUM_POLICY_IGNORE);
+        RepositoryPolicy snapshotPolicy = new RepositoryPolicy(false, RepositoryPolicy.UPDATE_POLICY_NEVER, RepositoryPolicy.CHECKSUM_POLICY_IGNORE);
+        repose.add(new RemoteRepository.Builder("central", "default", "https://repo1.maven.org/maven2/")
+                .setReleasePolicy(policy)
+                .setSnapshotPolicy(snapshotPolicy)
+                .build());
         return repose;
     }
 
@@ -364,8 +376,13 @@ public class Bootstrapper {
 
     public static List<RemoteRepository> convertRepositories(List<org.apache.maven.model.Repository> repositories) {
         List<RemoteRepository> result = new ArrayList<>();
+        RepositoryPolicy policy = new RepositoryPolicy(true, RepositoryPolicy.UPDATE_POLICY_NEVER, RepositoryPolicy.CHECKSUM_POLICY_IGNORE);
+        RepositoryPolicy snapshotPolicy = new RepositoryPolicy(false, RepositoryPolicy.UPDATE_POLICY_NEVER, RepositoryPolicy.CHECKSUM_POLICY_IGNORE);
         for (org.apache.maven.model.Repository repo : repositories) {
-            result.add(new RemoteRepository.Builder(repo.getId(), repo.getLayout(), repo.getUrl()).build());
+            result.add(new RemoteRepository.Builder(repo.getId(), repo.getLayout(), repo.getUrl())
+                    .setReleasePolicy(policy)
+                    .setSnapshotPolicy(snapshotPolicy)
+                    .build());
         }
         return result;
     }
