@@ -19,7 +19,6 @@ import org.eclipse.aether.repository.WorkspaceReader;
 import java.io.File;
 import java.io.PrintWriter;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -109,43 +108,60 @@ public class DependencyResolverService {
             boolean excludeSiblings,
             boolean noCache) throws ArtifactResolutionException, DependencyCollectionException {
 
-        Set<Artifact> allTransitiveArtifacts = new LinkedHashSet<>();
-        
-        for (org.apache.maven.model.Dependency modelDep : dependencies) {
-            String scope = modelDep.getScope();
-            if (scope == null) scope = JavaScopes.COMPILE;
-            
-            String version = propertyResolver.apply(modelDep.getVersion(), model);
-            String groupId = propertyResolver.apply(modelDep.getGroupId(), model);
-            String artifactId = propertyResolver.apply(modelDep.getArtifactId(), model);
-            
-            String classifier = modelDep.getClassifier();
-            String extension = modelDep.getType();
-            if ("test-jar".equals(extension)) {
-                extension = "jar";
-                classifier = "tests";
-            }
-            
-            Artifact rootArtifact = new DefaultArtifact(groupId, artifactId, classifier, extension, version);
-            
-            // Check if this is a sibling (reactor module) - don't cache those
-            if (isSibling(groupId, artifactId, projectGroupId, reactorGAs)) {
-                allTransitiveArtifacts.addAll(resolveTransitiveIsolated(system, session, repos, rootArtifact, scope, scopes));
-                continue;
-            }
-
-            File cacheFile = getCacheFile(rootArtifact, session, scopes);
-            List<Artifact> closure = null;
-            if (!noCache && cacheFile.exists()) {
-                closure = loadTransitiveCache(cacheFile);
-            }
-            
-            if (closure == null) {
-                closure = resolveTransitiveIsolated(system, session, repos, rootArtifact, scope, scopes);
-                if (!noCache) {
-                    saveTransitiveCache(cacheFile, rootArtifact, closure, scopes);
+        List<List<Artifact>> results = dependencies.parallelStream().map(modelDep -> {
+            try {
+                String scope = modelDep.getScope();
+                if (scope == null) scope = JavaScopes.COMPILE;
+                
+                String version = propertyResolver.apply(modelDep.getVersion(), model);
+                String groupId = propertyResolver.apply(modelDep.getGroupId(), model);
+                String artifactId = propertyResolver.apply(modelDep.getArtifactId(), model);
+                
+                String classifier = modelDep.getClassifier();
+                String extension = modelDep.getType();
+                if ("test-jar".equals(extension)) {
+                    extension = "jar";
+                    classifier = "tests";
                 }
+                
+                Artifact rootArtifact = new DefaultArtifact(groupId, artifactId, classifier, extension, version);
+                
+                File cacheFile = getCacheFile(rootArtifact, session, scopes);
+                List<Artifact> closure = null;
+                
+                boolean isSibling = isSibling(groupId, artifactId, projectGroupId, reactorGAs);
+                String currentPomHash = null;
+                if (!noCache && cacheFile.exists()) {
+                    if (isSibling) {
+                        // For siblings, check if the POM hash has changed
+                        Artifact pomArtifact = new DefaultArtifact(groupId, artifactId, "", "pom", version);
+                        File pomFile = session.getWorkspaceReader() != null ? session.getWorkspaceReader().findArtifact(pomArtifact) : null;
+                        if (pomFile != null && pomFile.exists()) {
+                            currentPomHash = calculateHash(pomFile);
+                            String storedHash = getStoredHash(cacheFile);
+                            if (currentPomHash != null && currentPomHash.equals(storedHash)) {
+                                closure = loadTransitiveCache(cacheFile);
+                            }
+                        }
+                    } else {
+                        closure = loadTransitiveCache(cacheFile);
+                    }
+                }
+                
+                if (closure == null) {
+                    closure = resolveTransitiveIsolated(system, session, repos, rootArtifact, scope, scopes);
+                    if (!noCache) {
+                        saveTransitiveCache(cacheFile, rootArtifact, closure, scopes, currentPomHash);
+                    }
+                }
+                return closure;
+            } catch (Exception e) {
+                throw new RuntimeException("Error resolving transitive dependencies for " + modelDep, e);
             }
+        }).collect(java.util.stream.Collectors.toList());
+
+        Set<Artifact> allTransitiveArtifacts = new LinkedHashSet<>();
+        for (List<Artifact> closure : results) {
             allTransitiveArtifacts.addAll(closure);
         }
 
@@ -267,12 +283,15 @@ public class DependencyResolverService {
         return new File(dir, artifact.getArtifactId() + "-" + artifact.getVersion() + ".pom." + scopeKey + ".get-deps.cache");
     }
 
-    private static void saveTransitiveCache(File file, Artifact root, List<Artifact> closure, Set<String> scopes) {
+    private static void saveTransitiveCache(File file, Artifact root, List<Artifact> closure, Set<String> scopes, String pomHash) {
         try (PrintWriter writer = new PrintWriter(file)) {
             writer.println("# root=" + root.getGroupId() + ":" + root.getArtifactId() + ":" + root.getVersion() + ":" + root.getClassifier() + ":" + root.getExtension());
             List<String> sortedScopes = new ArrayList<>(scopes);
             Collections.sort(sortedScopes);
             writer.println("# scopes=" + String.join(",", sortedScopes));
+            if (pomHash != null) {
+                writer.println("# pomHash=" + pomHash);
+            }
             for (Artifact a : closure) {
                 writer.println(a.getGroupId() + ":" + a.getArtifactId() + ":" + (a.getClassifier() == null ? "" : a.getClassifier()) + ":" + a.getExtension() + ":" + a.getVersion());
             }
@@ -606,6 +625,40 @@ public class DependencyResolverService {
         return groupId.equals(projectGroupId);
     }
 
+
+    private static String calculateHash(File file) {
+        try {
+            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+            try (java.io.InputStream is = new java.io.FileInputStream(file)) {
+                byte[] buffer = new byte[8192];
+                int read;
+                while ((read = is.read(buffer)) > 0) {
+                    digest.update(buffer, 0, read);
+                }
+            }
+            byte[] hash = digest.digest();
+            StringBuilder hexString = new StringBuilder(64);
+            for (byte b : hash) {
+                String hex = Integer.toHexString(0xff & b);
+                if (hex.length() == 1) hexString.append('0');
+                hexString.append(hex);
+            }
+            return hexString.toString();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static String getStoredHash(File file) {
+        try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.FileReader(file))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (!line.startsWith("#")) break;
+                if (line.startsWith("# pomHash=")) return line.substring("# pomHash=".length());
+            }
+        } catch (Exception e) {}
+        return null;
+    }
 
     private static void collectNodes(DependencyNode node,
             List<DependencyNode> parents,

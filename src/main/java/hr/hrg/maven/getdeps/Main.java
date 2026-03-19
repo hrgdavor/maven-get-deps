@@ -281,12 +281,6 @@ public class Main {
         }
 
         if (reportPath != null) {
-            if (model == null) {
-                System.err.println("Warning: Size report cannot be generated from cache (model missing). Recalculating...");
-                File pomFile = new File(pomPath);
-                model = Bootstrapper.resolveModel(pomFile, system, session, repos);
-                repos.addAll(Bootstrapper.convertRepositories(model.getRepositories()));
-            }
             DependencyResolverService.ReportResult report = DependencyResolverService.resolveReport(
                     system, session, repos, model.getDependencies(), Main::resolveProperty, model, scopes, excludeSet, projectGroupId, reactorGAs, excludeSiblings);
 

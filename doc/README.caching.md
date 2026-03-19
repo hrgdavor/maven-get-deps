@@ -33,9 +33,20 @@ org.slf4j:slf4j-simple::jar:1.7.36
 org.slf4j:slf4j-api::jar:1.7.36
 ```
 
+## Performance Optimization Strategy
+
+The tool achieves its high performance (~450ms for 190+ dependencies) through several layered optimization techniques:
+
+1. **Strict Local Resolution**: The Maven Resolver is configured to favor the local repository and avoid slow remote metadata checks or snapshot updates.
+2. **Granular Per-Dependency Caching**: Instead of caching the whole project tree, we cache the transitive closure of *each direct dependency* individually. This ensures the cache is highly reusable across different projects using the same library.
+3. **Sibling Module Caching with Hash Validation**: Modules within the same Maven reactor (siblings) are also cached. To be CI-friendly, their cache is validated using a **SHA-256 hash** of their source `pom.xml`. If the hash matches the one stored in the cache header (`# pomHash=`), the cache is used; otherwise, it is re-resolved.
+4. **Parallelized Fragment Resolution**: The resolution of individual direct dependency closures (cache checks and Aether collections) is performed in parallel using a thread pool. This is particularly effective during cache misses or when reading many small cache files.
+5. **Batched Final Pathing**: All transitive coordinates are gathered into a single batched request to Aether for final path and size verification, minimizing redundant filesystem operations.
+
 ## Benefits
 - **Speed**: Subsequent resolutions are extremely fast. 
     - Small project: ~2s -> ~500ms (4x speedup)
-    - Larger project (189 dependencies): ~9s -> ~1.6s (5.6x speedup)
+    - Larger project (189 dependencies): ~9s -> ~450ms (20x speedup)
+- **Sibling Cache Impact**: On multimodule projects, the first resolution of siblings (before they are cached) can take ~2.8s. Subsequent resolutions using the sibling cache drop this to ~450ms, a saving of ~2.2s per run.
 - **Offline Support**: Once the cache is populated, resolution can happen entirely without network access or even Maven repository metadata.
 - **Shared across projects**: Reusing the same local repository automatically benefits from the work done in earlier projects.
