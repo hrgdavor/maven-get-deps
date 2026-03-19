@@ -9,6 +9,7 @@ import org.eclipse.aether.repository.LocalRepository;
 import org.eclipse.aether.repository.RemoteRepository;
 import org.eclipse.aether.repository.RepositoryPolicy;
 import org.eclipse.aether.supplier.RepositorySystemSupplier;
+import org.apache.maven.model.building.ModelCache;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -29,6 +30,10 @@ public class Bootstrapper {
     }
 
     public static RepositorySystemSession newRepositorySystemSession(RepositorySystem system, String localRepoPath) {
+        return newRepositorySystemSession(system, localRepoPath, false);
+    }
+
+    public static RepositorySystemSession newRepositorySystemSession(RepositorySystem system, String localRepoPath, boolean offline) {
         DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
 
         LocalRepository localRepo = new LocalRepository(localRepoPath);
@@ -38,8 +43,24 @@ public class Bootstrapper {
         session.setCache(new DefaultRepositoryCache());
         session.setIgnoreArtifactDescriptorRepositories(true);
         session.setArtifactDescriptorPolicy(new SimpleArtifactDescriptorPolicy(ArtifactDescriptorPolicy.IGNORE_MISSING | ArtifactDescriptorPolicy.IGNORE_ERRORS));
+        session.setOffline(offline);
+
+        // Add a model cache if we are in Maven 3.9+ environment that supports it via session data
+        session.getData().set(ModelCache.class, new DefaultModelCache());
 
         return session;
+    }
+
+    private static class DefaultModelCache implements ModelCache {
+        private final Map<Object, Object> cache = new HashMap<>();
+        @Override
+        public void put(String groupId, String artifactId, String version, String tag, Object data) {
+            cache.put(groupId + ":" + artifactId + ":" + version + ":" + tag, data);
+        }
+        @Override
+        public Object get(String groupId, String artifactId, String version, String tag) {
+            return cache.get(groupId + ":" + artifactId + ":" + version + ":" + tag);
+        }
     }
 
     public static class ReactorWorkspaceReader implements WorkspaceReader {
@@ -193,6 +214,7 @@ public class Bootstrapper {
         private final RepositorySystem system;
         private final RepositorySystemSession session;
         private final List<RemoteRepository> repositories;
+        private final Map<String, org.apache.maven.model.building.ModelSource> cache = new HashMap<>();
 
         public AetherModelResolver(RepositorySystem system, RepositorySystemSession session,
                 List<RemoteRepository> repositories) {
@@ -201,17 +223,28 @@ public class Bootstrapper {
             this.repositories = repositories;
         }
 
+        private AetherModelResolver(AetherModelResolver copy) {
+            this.system = copy.system;
+            this.session = copy.session;
+            this.repositories = copy.repositories;
+        }
+
         @Override
         public org.apache.maven.model.building.ModelSource resolveModel(String groupId, String artifactId,
                 String version)
                 throws org.apache.maven.model.resolution.UnresolvableModelException {
+            String key = groupId + ":" + artifactId + ":" + version;
+            if (cache.containsKey(key)) return cache.get(key);
+
             org.eclipse.aether.artifact.Artifact pomArtifact = new org.eclipse.aether.artifact.DefaultArtifact(groupId,
                     artifactId, "", "pom", version);
             try {
                 org.eclipse.aether.resolution.ArtifactRequest request = new org.eclipse.aether.resolution.ArtifactRequest(
                         pomArtifact, repositories, null);
                 org.eclipse.aether.resolution.ArtifactResult result = system.resolveArtifact(session, request);
-                return new org.apache.maven.model.building.FileModelSource(result.getArtifact().getFile());
+                org.apache.maven.model.building.ModelSource source = new org.apache.maven.model.building.FileModelSource(result.getArtifact().getFile());
+                cache.put(key, source);
+                return source;
             } catch (org.eclipse.aether.resolution.ArtifactResolutionException e) {
                 throw new org.apache.maven.model.resolution.UnresolvableModelException(e.getMessage(), groupId,
                         artifactId, version, e);
@@ -244,7 +277,7 @@ public class Bootstrapper {
 
         @Override
         public org.apache.maven.model.resolution.ModelResolver newCopy() {
-            return new AetherModelResolver(system, session, repositories);
+            return new AetherModelResolver(this);
         }
     }
 

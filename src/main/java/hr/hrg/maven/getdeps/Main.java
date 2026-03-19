@@ -67,6 +67,8 @@ public class Main {
 
         options.addOption(new Option("es", "exclude-siblings", false,
                 "Exclude artifacts from the same groupId as the project (default: false)"));
+        options.addOption(new Option("off", "offline", false, "Work offline (no remote repository checks)"));
+        options.addOption(new Option("nc", "no-cache", false, "Disable per-dependency caching"));
         CommandLineParser parser = new DefaultParser();
         HelpFormatter formatter = new HelpFormatter();
 
@@ -132,10 +134,12 @@ public class Main {
 
 
             boolean excludeSiblings = cmd.hasOption("exclude-siblings");
+            boolean offline = cmd.hasOption("offline");
+            boolean noCache = cmd.hasOption("no-cache");
  
             run(destDir, pomPath, artifactCoords, inputPath, outputPath, reportPath, cachePath, scopesStr, copyJars,
                     classpathMode,
-                    extraClasspathFile, excludes, excludeSiblings);
+                    extraClasspathFile, excludes, excludeSiblings, offline, noCache);
 
         } catch (ParseException e) {
             System.out.println(e.getMessage());
@@ -151,9 +155,9 @@ public class Main {
             String reportPath,
             String cachePath,
             String scopesStr, boolean copyJars, boolean classpathMode,
-            String extraClasspathFile, String excludes, boolean excludeSiblings) throws Exception {
+            String extraClasspathFile, String excludes, boolean excludeSiblings, boolean offline, boolean noCache) throws Exception {
 
-        Model model;
+        Model model = null;
         RepositorySystem system = Bootstrapper.newRepositorySystem();
 
         String defaultM2 = System.getProperty("user.home") + "/.m2/repository";
@@ -168,7 +172,7 @@ public class Main {
         }
 
         String sessionLocalRepoPath = (copyJars && destDir != null) ? destDir : sourceRepoPath;
-        DefaultRepositorySystemSession session = (DefaultRepositorySystemSession) Bootstrapper.newRepositorySystemSession(system, sessionLocalRepoPath);
+        DefaultRepositorySystemSession session = (DefaultRepositorySystemSession) Bootstrapper.newRepositorySystemSession(system, sessionLocalRepoPath, offline);
 
         Bootstrapper.ReactorWorkspaceReader reactor = new Bootstrapper.ReactorWorkspaceReader();
         if (pomPath != null) {
@@ -201,12 +205,8 @@ public class Main {
         // Always add Central
         List<RemoteRepository> repos = Bootstrapper.newRepositories(system, session, sourceRepoPath);
 
-        // Always add local-cache to repositories to ensure transitives of local artifacts are found
-        // The WorkspaceReader in the session will handle projectGroupId artifacts specifically,
-        // but other artifacts might still be needed from the local cache if they aren't in Central.
-        repos.add(0,
-                new RemoteRepository.Builder("local-cache", "default", new File(sourceRepoPath).toURI().toString())
-                        .build());
+        Set<String> scopes = StreamUtil.splitToSet(scopesStr, ",");
+        Set<String> excludeSet = DependencyResolverService.normalizeExcludes(excludes);
 
         if (artifactCoords != null) {
             DependencyFormatInfo info = FormatConverter.parse(artifactCoords);
@@ -237,11 +237,6 @@ public class Main {
         // Add additional repositories from the POM model
         repos.addAll(Bootstrapper.convertRepositories(model.getRepositories()));
 
-        Set<String> scopes = StreamUtil.splitToSet(scopesStr, ",");
-
-        Set<String> excludeSet = DependencyResolverService.normalizeExcludes(excludes);
-
-
         DependencyResolverService.ResolutionResult result = DependencyResolverService.resolve(
                 system,
                 session,
@@ -253,8 +248,9 @@ public class Main {
                 excludeSet,
                 projectGroupId,
                 reactorGAs,
-                excludeSiblings);
-
+                excludeSiblings,
+                noCache);
+        
         if (outputPath != null) {
             try (PrintWriter writer = new PrintWriter(new File(outputPath))) {
                 if (classpathMode) {
@@ -285,6 +281,12 @@ public class Main {
         }
 
         if (reportPath != null) {
+            if (model == null) {
+                System.err.println("Warning: Size report cannot be generated from cache (model missing). Recalculating...");
+                File pomFile = new File(pomPath);
+                model = Bootstrapper.resolveModel(pomFile, system, session, repos);
+                repos.addAll(Bootstrapper.convertRepositories(model.getRepositories()));
+            }
             DependencyResolverService.ReportResult report = DependencyResolverService.resolveReport(
                     system, session, repos, model.getDependencies(), Main::resolveProperty, model, scopes, excludeSet, projectGroupId, reactorGAs, excludeSiblings);
 

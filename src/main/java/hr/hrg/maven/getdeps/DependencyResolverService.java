@@ -14,11 +14,16 @@ import org.eclipse.aether.resolution.ArtifactResolutionException;
 import org.eclipse.aether.collection.DependencyCollectionException;
 import org.eclipse.aether.util.artifact.JavaScopes;
 import org.eclipse.aether.util.filter.DependencyFilterUtils;
+import org.eclipse.aether.repository.WorkspaceReader;
 
 import java.io.File;
+import java.io.PrintWriter;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -101,130 +106,196 @@ public class DependencyResolverService {
             Set<String> excludeSet,
             String projectGroupId,
             Set<String> reactorGAs,
-            boolean excludeSiblings) throws ArtifactResolutionException, DependencyCollectionException {
+            boolean excludeSiblings,
+            boolean noCache) throws ArtifactResolutionException, DependencyCollectionException {
 
-        CollectRequest collectRequest = new CollectRequest();
-        for (org.apache.maven.model.Dependency dep : dependencies) {
-            String scope = dep.getScope();
-            if (scope == null)
-                scope = JavaScopes.COMPILE;
-
-            String version = propertyResolver.apply(dep.getVersion(), model);
-            String groupId = propertyResolver.apply(dep.getGroupId(), model);
-            String artifactId = propertyResolver.apply(dep.getArtifactId(), model);
-
-            String classifier = dep.getClassifier();
-            String extension = dep.getType();
+        Set<Artifact> allTransitiveArtifacts = new LinkedHashSet<>();
+        
+        for (org.apache.maven.model.Dependency modelDep : dependencies) {
+            String scope = modelDep.getScope();
+            if (scope == null) scope = JavaScopes.COMPILE;
+            
+            String version = propertyResolver.apply(modelDep.getVersion(), model);
+            String groupId = propertyResolver.apply(modelDep.getGroupId(), model);
+            String artifactId = propertyResolver.apply(modelDep.getArtifactId(), model);
+            
+            String classifier = modelDep.getClassifier();
+            String extension = modelDep.getType();
             if ("test-jar".equals(extension)) {
                 extension = "jar";
                 classifier = "tests";
             }
-
-            collectRequest.addDependency(new Dependency(
-                    new DefaultArtifact(groupId, artifactId, classifier, extension, version),
-                    scope));
-        }
-
-        if (model.getDependencyManagement() != null) {
-            List<Dependency> managed = new ArrayList<>();
-            for (org.apache.maven.model.Dependency dep : model.getDependencyManagement().getDependencies()) {
-                String version = propertyResolver.apply(dep.getVersion(), model);
-                String groupId = propertyResolver.apply(dep.getGroupId(), model);
-                String artifactId = propertyResolver.apply(dep.getArtifactId(), model);
-                
-                String classifier = dep.getClassifier();
-                String extension = dep.getType();
-                if ("test-jar".equals(extension)) {
-                    extension = "jar";
-                    classifier = "tests";
-                }
-                
-                managed.add(new Dependency(
-                        new DefaultArtifact(groupId, artifactId, classifier, extension, version),
-                        dep.getScope(), dep.isOptional()));
+            
+            Artifact rootArtifact = new DefaultArtifact(groupId, artifactId, classifier, extension, version);
+            
+            // Check if this is a sibling (reactor module) - don't cache those
+            if (isSibling(groupId, artifactId, projectGroupId, reactorGAs)) {
+                allTransitiveArtifacts.addAll(resolveTransitiveIsolated(system, session, repos, rootArtifact, scope, scopes));
+                continue;
             }
-            collectRequest.setManagedDependencies(managed);
+
+            File cacheFile = getCacheFile(rootArtifact, session, scopes);
+            List<Artifact> closure = null;
+            if (!noCache && cacheFile.exists()) {
+                closure = loadTransitiveCache(cacheFile);
+            }
+            
+            if (closure == null) {
+                closure = resolveTransitiveIsolated(system, session, repos, rootArtifact, scope, scopes);
+                if (!noCache) {
+                    saveTransitiveCache(cacheFile, rootArtifact, closure, scopes);
+                }
+            }
+            allTransitiveArtifacts.addAll(closure);
         }
+
+        return resolveArtifactsAndPaths(system, session, repos, allTransitiveArtifacts, excludeSet, projectGroupId, reactorGAs, excludeSiblings);
+    }
+
+    private static List<Artifact> resolveTransitiveIsolated(RepositorySystem system, RepositorySystemSession session,
+            List<RemoteRepository> repos, Artifact rootArtifact, String scope, Set<String> scopes) throws DependencyCollectionException {
+        
+        CollectRequest collectRequest = new CollectRequest();
+        collectRequest.addDependency(new Dependency(rootArtifact, scope));
         collectRequest.setRepositories(repos);
 
         org.eclipse.aether.graph.DependencyFilter scopeFilter = DependencyFilterUtils.classpathFilter(scopes.toArray(new String[0]));
         org.eclipse.aether.collection.CollectResult collectResult = system.collectDependencies(session, collectRequest);
 
-        if (!collectResult.getExceptions().isEmpty()) {
-            for (Exception e : collectResult.getExceptions()) {
-                System.err.println("Collection error: " + e.getMessage());
-            }
+        List<DependencyNode> nodes = new ArrayList<>();
+        collectNodes(collectResult.getRoot(), new ArrayList<>(), scopeFilter, nodes, new HashSet<>());
+        
+        List<Artifact> result = new ArrayList<>();
+        for (DependencyNode node : nodes) {
+            if (node.getArtifact() != null) result.add(node.getArtifact());
         }
+        return result;
+    }
 
-        List<DependencyNode> nodes = new java.util.ArrayList<>();
-        collectNodes(collectResult.getRoot(), new java.util.ArrayList<>(), scopeFilter, nodes, new java.util.HashSet<>());
+    private static ResolutionResult resolveArtifactsAndPaths(
+            RepositorySystem system,
+            RepositorySystemSession session,
+            List<RemoteRepository> repos,
+            Set<Artifact> artifacts,
+            Set<String> excludeSet,
+            String projectGroupId,
+            Set<String> reactorGAs,
+            boolean excludeSiblings) throws ArtifactResolutionException {
 
         List<ArtifactRequest> requests = new ArrayList<>();
-        for (DependencyNode node : nodes) {
-            Artifact artifact = node.getArtifact();
-            if (artifact == null) continue;
+        for (Artifact artifact : artifacts) {
             requests.add(new ArtifactRequest(artifact, repos, null));
-            // Also add POM to requests to resolve in batch
             requests.add(new ArtifactRequest(new DefaultArtifact(artifact.getGroupId(), artifact.getArtifactId(), artifact.getClassifier(), "pom", artifact.getVersion()), repos, null));
         }
 
-        List<ArtifactResult> allResults;
-        try {
-            allResults = system.resolveArtifacts(session, requests);
-        } catch (org.eclipse.aether.resolution.ArtifactResolutionException e) {
-            // Handle partially resolved results if possible, but for simplicity we'll just catch and filter later
-            allResults = e.getResults();
-        }
+        List<ArtifactResult> allResults = new ArrayList<>();
+        if (session.isOffline()) {
+            WorkspaceReader workspaceReader = session.getWorkspaceReader();
+            for (Artifact artifact : artifacts) {
+                ArtifactRequest jarReq = new ArtifactRequest(artifact, repos, null);
+                ArtifactResult jarRes = new ArtifactResult(jarReq);
+                File jarFile = null;
+                if (workspaceReader != null) jarFile = workspaceReader.findArtifact(artifact);
+                if (jarFile == null) {
+                    String path = session.getLocalRepositoryManager().getPathForLocalArtifact(artifact);
+                    jarFile = new File(session.getLocalRepository().getBasedir(), path);
+                }
+                if (jarFile != null && jarFile.exists()) jarRes.setArtifact(artifact.setFile(jarFile));
+                allResults.add(jarRes);
 
-        List<String> relativePaths = new ArrayList<>();
-        long totalSize = 0;
-
-        // Group into JAR and POM for processing
-        Map<String, Artifact> jars = new HashMap<>();
-        Map<String, Artifact> poms = new HashMap<>();
-
-        for(ArtifactResult ar : allResults) {
-            Artifact a = ar.getArtifact();
-            if(a == null) continue;
-            String ga = a.getGroupId() + ":" + a.getArtifactId() + ":" + a.getVersion();
-            if("pom".equals(a.getExtension())) {
-                poms.put(ga, a);
-            } else {
-                jars.put(ga, a);
+                Artifact pomArtifact = new DefaultArtifact(artifact.getGroupId(), artifact.getArtifactId(), artifact.getClassifier(), "pom", artifact.getVersion());
+                ArtifactResult pomRes = new ArtifactResult(new ArtifactRequest(pomArtifact, repos, null));
+                File pomFile = null;
+                if (workspaceReader != null) pomFile = workspaceReader.findArtifact(pomArtifact);
+                if (pomFile == null) {
+                    String path = session.getLocalRepositoryManager().getPathForLocalArtifact(pomArtifact);
+                    pomFile = new File(session.getLocalRepository().getBasedir(), path);
+                }
+                if (pomFile != null && pomFile.exists()) pomRes.setArtifact(pomArtifact.setFile(pomFile));
+                allResults.add(pomRes);
+            }
+        } else {
+            try {
+                allResults = system.resolveArtifacts(session, requests);
+            } catch (org.eclipse.aether.resolution.ArtifactResolutionException e) {
+                allResults = e.getResults();
             }
         }
 
-        for (DependencyNode node : nodes) {
-            Artifact artifact = node.getArtifact();
-            if (artifact == null) continue;
-            
-            String ga = artifact.getGroupId() + ":" + artifact.getArtifactId() + ":" + artifact.getVersion();
+        Set<String> relativePaths = new LinkedHashSet<>();
+        long totalSize = 0;
+        Map<String, Artifact> jars = new HashMap<>();
+        Map<String, Artifact> poms = new HashMap<>();
+
+        for (ArtifactResult ar : allResults) {
+            Artifact a = ar.getArtifact();
+            if (a == null) continue;
+            String ga = a.getGroupId() + ":" + a.getArtifactId() + ":" + a.getVersion() + ":" + a.getClassifier();
+            if ("pom".equals(a.getExtension())) poms.put(ga, a);
+            else jars.put(ga, a);
+        }
+
+        for (Artifact artifact : artifacts) {
+            String ga = artifact.getGroupId() + ":" + artifact.getArtifactId() + ":" + artifact.getVersion() + ":" + artifact.getClassifier();
             Artifact resolvedJar = jars.get(ga);
             File jarFile = resolvedJar != null ? resolvedJar.getFile() : null;
 
             if (jarFile != null) {
-                totalSize += jarFile.length();
                 String relativePath = session.getLocalRepositoryManager().getPathForLocalArtifact(resolvedJar);
                 String normalizedPath = relativePath.replace('\\', '/');
-
-                if (isExcluded(artifact.getGroupId(), artifact.getArtifactId(), normalizedPath, excludeSet)) {
-                    totalSize -= jarFile.length();
-                    continue;
-                }
-                if (excludeSiblings && isSibling(artifact.getGroupId(), artifact.getArtifactId(), projectGroupId, reactorGAs)) {
-                    totalSize -= jarFile.length();
-                    continue;
-                }
-                relativePaths.add(normalizedPath);
-
-                Artifact resolvedPom = poms.get(ga);
-                if (resolvedPom != null && resolvedPom.getFile() != null) {
-                    totalSize += resolvedPom.getFile().length();
+                if (isExcluded(artifact.getGroupId(), artifact.getArtifactId(), normalizedPath, excludeSet)) continue;
+                if (excludeSiblings && isSibling(artifact.getGroupId(), artifact.getArtifactId(), projectGroupId, reactorGAs)) continue;
+                
+                if (relativePaths.add(normalizedPath)) {
+                    totalSize += jarFile.length();
+                    Artifact resolvedPom = poms.get(ga);
+                    if (resolvedPom != null && resolvedPom.getFile() != null) totalSize += resolvedPom.getFile().length();
                 }
             }
         }
+        return new ResolutionResult(new ArrayList<>(relativePaths), totalSize);
+    }
 
-        return new ResolutionResult(relativePaths, totalSize);
+    private static File getCacheFile(Artifact artifact, RepositorySystemSession session, Set<String> scopes) {
+        String path = session.getLocalRepositoryManager().getPathForLocalArtifact(artifact);
+        File jarFile = new File(session.getLocalRepository().getBasedir(), path);
+        File dir = jarFile.getParentFile();
+        List<String> sortedScopes = new ArrayList<>(scopes);
+        Collections.sort(sortedScopes);
+        String scopeKey = String.join(",", sortedScopes);
+        if (scopeKey.isEmpty()) scopeKey = "all";
+        return new File(dir, artifact.getArtifactId() + "-" + artifact.getVersion() + ".pom." + scopeKey + ".get-deps.cache");
+    }
+
+    private static void saveTransitiveCache(File file, Artifact root, List<Artifact> closure, Set<String> scopes) {
+        try (PrintWriter writer = new PrintWriter(file)) {
+            writer.println("# root=" + root.getGroupId() + ":" + root.getArtifactId() + ":" + root.getVersion() + ":" + root.getClassifier() + ":" + root.getExtension());
+            List<String> sortedScopes = new ArrayList<>(scopes);
+            Collections.sort(sortedScopes);
+            writer.println("# scopes=" + String.join(",", sortedScopes));
+            for (Artifact a : closure) {
+                writer.println(a.getGroupId() + ":" + a.getArtifactId() + ":" + (a.getClassifier() == null ? "" : a.getClassifier()) + ":" + a.getExtension() + ":" + a.getVersion());
+            }
+        } catch (Exception e) {
+            System.err.println("Warning: Could not save cache: " + e.getMessage());
+        }
+    }
+
+    private static List<Artifact> loadTransitiveCache(File file) {
+        try {
+            List<String> lines = java.nio.file.Files.readAllLines(file.toPath());
+            List<Artifact> artifacts = new ArrayList<>();
+            for (String line : lines) {
+                if (line.startsWith("#")) continue;
+                String[] p = line.split(":");
+                if (p.length == 5) {
+                    artifacts.add(new DefaultArtifact(p[0], p[1], p[2], p[3], p[4]));
+                }
+            }
+            return artifacts;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     public static ReportResult resolveReport(
@@ -240,83 +311,71 @@ public class DependencyResolverService {
             java.util.Set<String> reactorGAs,
             boolean excludeSiblings) throws Exception {
 
+        CollectRequest collectRequest = new CollectRequest();
+        for (org.apache.maven.model.Dependency dep : dependencies) {
+            String scope = dep.getScope() != null ? dep.getScope() : JavaScopes.COMPILE;
+            String version = propertyResolver.apply(dep.getVersion(), model);
+            String groupId = propertyResolver.apply(dep.getGroupId(), model);
+            String artifactId = propertyResolver.apply(dep.getArtifactId(), model);
+            collectRequest.addDependency(new Dependency(new DefaultArtifact(groupId, artifactId, dep.getClassifier(), dep.getType(), version), scope));
+        }
+        collectRequest.setRepositories(repos);
+
+        org.eclipse.aether.collection.CollectResult collectResult = system.collectDependencies(session, collectRequest);
+        
+        List<DependencyNode> directNodes = collectResult.getRoot().getChildren();
+        org.eclipse.aether.graph.DependencyFilter scopeFilter = DependencyFilterUtils.classpathFilter(scopes.toArray(new String[0]));
+
         List<ReportEntry> entries = new ArrayList<>();
         java.util.Set<String> seenArtifacts = new java.util.HashSet<>();
         long totalSize = 0;
 
-        for (org.apache.maven.model.Dependency dep : dependencies) {
-            String scope = dep.getScope();
-            if (scope == null)
-                scope = JavaScopes.COMPILE;
+        for (DependencyNode directNode : directNodes) {
+            Dependency dep = directNode.getDependency();
+            if (dep == null) continue;
+            Artifact a = dep.getArtifact();
+            String depId = a.getGroupId() + ":" + a.getArtifactId() + ":" + a.getVersion();
 
-            String version = propertyResolver.apply(dep.getVersion(), model);
-            String groupId = propertyResolver.apply(dep.getGroupId(), model);
-            String artifactId = propertyResolver.apply(dep.getArtifactId(), model);
-            String depId = groupId + ":" + artifactId + ":" + version;
+            List<DependencyNode> subNodes = new ArrayList<>();
+            collectNodes(directNode, new ArrayList<>(), scopeFilter, subNodes, new HashSet<>());
 
-            CollectRequest collectRequest = new CollectRequest();
-            collectRequest.addDependency(new Dependency(
-                    new DefaultArtifact(groupId, artifactId, dep.getClassifier(), dep.getType(), version),
-                    scope));
-            collectRequest.setRepositories(repos);
-
-            org.eclipse.aether.graph.DependencyFilter scopeFilter = DependencyFilterUtils.classpathFilter(scopes.toArray(new String[0]));
-            org.eclipse.aether.collection.CollectResult collectResult = system.collectDependencies(session, collectRequest);
-            if (!collectResult.getExceptions().isEmpty()) {
-                for (Exception e : collectResult.getExceptions()) {
-                    System.err.println("Collection error: " + e.getMessage());
-                }
-            }
-
-            List<DependencyNode> nodes = new java.util.ArrayList<>();
-            collectNodes(collectResult.getRoot(), new java.util.ArrayList<>(), scopeFilter, nodes, new java.util.HashSet<>());
-
-            List<ArtifactResult> artifactResults = new ArrayList<>();
-            for (DependencyNode node : nodes) {
+            List<ArtifactRequest> requests = new ArrayList<>();
+            for (DependencyNode node : subNodes) {
                 Artifact artifact = node.getArtifact();
                 if (artifact == null) continue;
-                try {
-                    artifactResults.add(system.resolveArtifact(session, new ArtifactRequest(artifact, repos, null)));
-                } catch (org.eclipse.aether.resolution.ArtifactResolutionException e) {
-                    if (excludeSiblings && isSibling(artifact.getGroupId(), artifact.getArtifactId(), projectGroupId, reactorGAs)) {
-                        artifactResults.add(new ArtifactResult(new ArtifactRequest(artifact, repos, null)).setArtifact(artifact));
-                    } else {
-                        throw e;
-                    }
-                }
-            }
-            long currentDepSize = 0;
-
-            for (ArtifactResult artifactResult : artifactResults) {
-                Artifact artifact = artifactResult.getArtifact();
-                String relativePath = session.getLocalRepositoryManager().getPathForLocalArtifact(artifact);
-                if (isExcluded(artifact.getGroupId(), artifact.getArtifactId(), relativePath, excludeSet)) {
-                    continue;
-                }
-
-                if (excludeSiblings && isSibling(artifact.getGroupId(), artifact.getArtifactId(), projectGroupId, reactorGAs)) {
-                    continue;
-                }
-
                 String artifactIdStr = artifact.getGroupId() + ":" + artifact.getArtifactId() + ":"
                         + artifact.getVersion() + ":" + artifact.getClassifier() + ":" + artifact.getExtension();
-
                 if (!seenArtifacts.contains(artifactIdStr)) {
-                    File file = artifact.getFile();
-                    if (file != null) {
-                        currentDepSize += file.length();
-                    }
+                    requests.add(new ArtifactRequest(artifact, repos, null));
+                    requests.add(new ArtifactRequest(new DefaultArtifact(artifact.getGroupId(), artifact.getArtifactId(), artifact.getClassifier(), "pom", artifact.getVersion()), repos, null));
+                }
+            }
 
-                    // Also ensure POM is resolved/present and count its size
-                    Artifact pomArtifact = new DefaultArtifact(artifact.getGroupId(), artifact.getArtifactId(),
-                            artifact.getClassifier(), "pom", artifact.getVersion());
-                    ArtifactResult pomResult = system.resolveArtifact(session,
-                            new org.eclipse.aether.resolution.ArtifactRequest(pomArtifact, repos, null));
-                    if (pomResult.getArtifact().getFile() != null) {
-                        currentDepSize += pomResult.getArtifact().getFile().length();
-                    }
+            List<ArtifactResult> results;
+            try {
+                results = system.resolveArtifacts(session, requests);
+            } catch (org.eclipse.aether.resolution.ArtifactResolutionException e) {
+                results = e.getResults();
+            }
 
-                    seenArtifacts.add(artifactIdStr);
+            long currentDepSize = 0;
+            for (ArtifactResult ar : results) {
+                Artifact resolved = ar.getArtifact();
+                if (resolved == null || resolved.getFile() == null) continue;
+
+                if (isExcluded(resolved.getGroupId(), resolved.getArtifactId(), 
+                        session.getLocalRepositoryManager().getPathForLocalArtifact(resolved), excludeSet)) {
+                    continue;
+                }
+                if (excludeSiblings && isSibling(resolved.getGroupId(), resolved.getArtifactId(), projectGroupId, reactorGAs)) {
+                    continue;
+                }
+
+                String artifactIdStr = resolved.getGroupId() + ":" + resolved.getArtifactId() + ":"
+                        + resolved.getVersion() + ":" + resolved.getClassifier() + ":" + resolved.getExtension();
+                
+                if (seenArtifacts.add(artifactIdStr)) {
+                    currentDepSize += resolved.getFile().length();
                 }
             }
 
@@ -546,6 +605,7 @@ public class DependencyResolverService {
             return false;
         return groupId.equals(projectGroupId);
     }
+
 
     private static void collectNodes(DependencyNode node,
             List<DependencyNode> parents,

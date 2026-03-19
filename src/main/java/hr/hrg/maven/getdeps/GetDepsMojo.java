@@ -65,6 +65,9 @@ public class GetDepsMojo extends AbstractMojo {
     @Parameter(property = "excludeSiblings", defaultValue = "false")
     private boolean excludeSiblings;
 
+    @Parameter(property = "noCache", defaultValue = "false")
+    private boolean noCache;
+
     @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
         try {
@@ -137,7 +140,8 @@ public class GetDepsMojo extends AbstractMojo {
                     excludeSet,
                     projectGroupId,
                     reactorGAs,
-                    excludeSiblings);
+                    excludeSiblings,
+                    noCache);
 
             if (outputFile != null) {
                 try (PrintWriter writer = new PrintWriter(outputFile)) {
