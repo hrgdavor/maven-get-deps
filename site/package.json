@@ -1,8 +1,9 @@
 {
   "name": "maven-get-deps-site",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "node build.js",
+    "build": "bun build.js",
     "serve": "bun x serve ../docs"
   },
   "devDependencies": {
@@ -12,6 +13,11 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@jsx6/jsx6": "1.8.18",
+    "@jsx6/signal": "1.8.18",
+    "@jsx6/jsx-runtime": "1.8.18",
+    "@jsx6/jsx-dev-runtime": "1.8.18",
+    "@jsx6/w": "1.8.18",
     "highlight.js": "^11.11.1",
     "marked": "^17.0.4"
   }

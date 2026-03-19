@@ -6,7 +6,15 @@
     "module": "Preserve",
     "moduleDetection": "force",
     "jsx": "react-jsx",
+    "jsxImportSource": "@jsx6",
     "allowJs": true,
+    "baseUrl": ".",
+    "paths": {
+      "@jsx6/jsx6": ["../../jsx6/libs/jsx6/index.js"],
+      "@jsx6/signal": ["../../jsx6/libs/signal/index.js"],
+      "@jsx6/jsx-runtime": ["../../jsx6/libs/jsx-runtime/index.js"],
+      "@jsx6/w": ["../../jsx6/libs/w/index.js"]
+    },
 
     // Bundler mode
     "moduleResolution": "bundler",

@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Telekinetic Nexus | Interactive Guide</title>
+    <link rel="stylesheet" href="../style.css">
+    <link rel="stylesheet" href="lib/github.min.css">
+    <link rel="stylesheet" href="nexus.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <script type="importmap">
+    {
+        "imports": {
+            "@jsx6/jsx6": "./jsx6-signal-v1.8.18.js",
+            "@jsx6/signal": "./jsx6-signal-v1.8.18.js",
+            "../ui-lib.jsx": "./ui-v1.0.0.js"
+        }
+    }
+    </script>
+</head>
+<body class="light-theme">
+    <!-- Data Bundle (will be inlined by build script) -->
+    <script id="nexus-data" type="application/json">{}</script>
+    <script src="lib/marked.min.js"></script>
+    <script src="lib/highlight.min.js"></script>
+    <script src="jsx6-signal-v1.8.18.js" type="module"></script>
+    <script src="ui-v1.0.0.js" type="module"></script>
+    <script src="nexus.bundle.js" type="module"></script>
+</body>
+</html>
