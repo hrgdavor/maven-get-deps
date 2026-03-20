@@ -43,7 +43,7 @@ jobs:
           else
             tar -czf release-artifacts/maven-get-deps-linux-x64.tar.gz -C target maven-get-deps
             tar -czf release-artifacts/cve12-linux-x64.tar.gz -C cve12/target cve12
-            cp target/maven-get-deps-*-cli.jar release-artifacts/maven-get-deps-cli.jar
+            cp maven-get-deps-cli/target/maven-get-deps-*-cli.jar release-artifacts/maven-get-deps-cli.jar
           fi
           cp cve12/target/cve12-*-cli.jar release-artifacts/cve12-cli.jar
 
