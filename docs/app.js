@@ -1,6 +1,6 @@
 const tools = [
     { id: 'maven-get-deps', name: 'maven-get-deps', desc: 'Core tool for resolving and downloading Maven dependencies efficiently.', langs: ['java', 'jar'] },
-    { id: 'cve12', name: 'cve12', desc: 'Comprehensive tool to scan dependencies for known CVE vulnerabilities and generate reports.', langs: ['java', 'jar'] },
+    { id: 'cve2', name: 'cve2', desc: 'Comprehensive tool to scan dependencies for known CVE vulnerabilities and generate reports.', langs: ['java', 'jar'] },
     { id: 'get_deps', name: 'get_deps', desc: 'A fast, lightweight dependency resolver implemented in Zig.', langs: ['zig'] },
     { id: 'version_manager', name: 'version_manager', desc: 'Utility to manage and switch between different versions of installed tools.', langs: ['zig'] },
     { id: 'gen_index', name: 'gen_index', desc: 'Tool to generate searchable indices for local and remote dependency repositories.', langs: ['zig'] }

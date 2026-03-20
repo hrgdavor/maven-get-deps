@@ -33,6 +33,9 @@
                   <mainClass>hr.hrg.cve12.Main</mainClass>
                 </transformer>
                 <transformer />
+                <transformer>
+                  <basename>org.owasp.dependencycheck.data.nvdcve.DatabaseManager</basename>
+                </transformer>
               </transformers>
             </configuration>
           </execution>
@@ -40,6 +43,47 @@
       </plugin>
     </plugins>
   </build>
+  <profiles>
+    <profile>
+      <id>native</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.graalvm.buildtools</groupId>
+            <artifactId>native-maven-plugin</artifactId>
+            <version>0.10.4</version>
+            <extensions>true</extensions>
+            <executions>
+              <execution>
+                <id>build-native</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>compile-no-fork</goal>
+                </goals>
+              </execution>
+            </executions>
+            <configuration>
+              <imageName>cve12</imageName>
+              <mainClass>hr.hrg.cve12.Main</mainClass>
+              <buildArgs>
+                <buildArg>--no-fallback</buildArg>
+                <buildArg>--enable-url-protocols=http,https</buildArg>
+                <buildArg>--report-unsupported-elements-at-runtime</buildArg>
+                <buildArg>--initialize-at-run-time=org.apache.lucene.store.PosixNativeAccess</buildArg>
+                <buildArg>-H:IncludeResources=.*\.properties|.*\.xml</buildArg>
+              </buildArgs>
+              <metadataRepository>
+                <enabled>true</enabled>
+              </metadataRepository>
+              <agent>
+                <enabled>true</enabled>
+              </agent>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
   <properties>
     <maven.compiler.target>17</maven.compiler.target>
     <owasp.version>12.2.0</owasp.version>

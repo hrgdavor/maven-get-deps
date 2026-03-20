@@ -25,13 +25,8 @@ public class CveScanner {
             Map<String, List<String>> directDepsWithTransitives,
             String nvdApiDelay) throws Exception {
 
-        Settings settings = new Settings();
-        settings.setString(Settings.KEYS.DATA_DIRECTORY, dataDirectory);
+        Settings settings = createSettings(dataDirectory, nvdApiDelay);
         settings.setBoolean(Settings.KEYS.AUTO_UPDATE, false);
-
-        if (nvdApiDelay != null && !nvdApiDelay.isBlank()) {
-            settings.setString(Settings.KEYS.NVD_API_DELAY, nvdApiDelay);
-        }
 
         // Essential analyzers
         settings.setBoolean(Settings.KEYS.ANALYZER_CENTRAL_ENABLED, true);
@@ -118,14 +113,10 @@ public class CveScanner {
         System.out.println("[CVE] Updating database in: " + dataDirectory);
         Files.createDirectories(Path.of(dataDirectory));
 
-        Settings settings = new Settings();
-        settings.setString(Settings.KEYS.DATA_DIRECTORY, dataDirectory);
+        Settings settings = createSettings(dataDirectory, nvdApiDelay);
         settings.setBoolean(Settings.KEYS.AUTO_UPDATE, true);
         if (nvdApiKey != null && !nvdApiKey.isBlank()) {
             settings.setString(Settings.KEYS.NVD_API_KEY, nvdApiKey);
-        }
-        if (nvdApiDelay != null && !nvdApiDelay.isBlank()) {
-            settings.setString(Settings.KEYS.NVD_API_DELAY, nvdApiDelay);
         }
         
         // Disable analyzers for download-only
@@ -138,5 +129,30 @@ public class CveScanner {
             engine.doUpdates(true);
             System.out.println("[CVE] Database update complete.");
         }
+    }
+
+    private static Settings createSettings(String dataDirectory, String nvdApiDelay) {
+        Settings settings = new Settings();
+        settings.setString(Settings.KEYS.DATA_DIRECTORY, dataDirectory);
+        
+        if (nvdApiDelay != null && !nvdApiDelay.isBlank()) {
+            settings.setString(Settings.KEYS.NVD_API_DELAY, nvdApiDelay);
+        }
+
+        if (settings.getString("data.connection_string") == null) {
+            // If it failed to get connection string (missing properties), set defaults manually
+            System.out.println("[CVE] WARN: Unable to load default properties, setting manual defaults.");
+            // These are the standard defaults from dependencycheck.properties
+            settings.setString("data.driver_name", "org.h2.Driver");
+            settings.setString("data.connection_string", "jdbc:h2:file:%s/dc.mv.db;AUTO_SERVER=TRUE;DB_CLOSE_ON_EXIT=FALSE;CACHE_SIZE=65536;");
+        }
+        
+        // ensure the connection string uses the data directory
+        String connStr = settings.getString("data.connection_string");
+        if (connStr != null && connStr.contains("%s")) {
+            settings.setString("data.connection_string", String.format(connStr, dataDirectory));
+        }
+
+        return settings;
     }
 }

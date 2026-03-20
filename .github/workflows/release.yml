@@ -27,7 +27,7 @@ jobs:
       - name: Build with Maven
         run: |
           mvn install -f cve-common/pom.xml
-          mvn package -f cve12/pom.xml -DskipTests
+          mvn package -f cve12/pom.xml -DskipTests -Pnative
           mvn clean package -Pexecutable -Pnative -DskipTests
 
       - name: Prepare Artifacts
