@@ -1,13 +1,24 @@
 # get_deps: Path Resolution & Download (Zig Edition)
 
-The `get_deps` tool is an ultra-fast, zero-dependency implementation written in Zig. It focuses on the most critical deployment tasks: **path resolution**, **filling missing artifacts** in the local cache, and classpath generation. 
+The `get_deps` tool is an ultra-fast, zero-dependency implementation written in Zig. It focuses on critical deployment and resolution tasks: **transitive resolution**, **path resolution**, **filling missing artifacts**, and **classpath generation**.
 
-> [!IMPORTANT]
-> **No Transitive Expansion**: The Zig version does not resolve transitive dependencies. It expects a list of already-resolved dependencies (e.g., from a POM or a text file) and converts them into filesystem paths, downloading any missing JARs along the way if pesent in maven central. You must perform transitive expansion during your build step using the Java implementation.
+> [!TIP]
+> **Native Transitive Resolution**: Starting with the latest version, the Zig tool supports the `mimic` command for full transitive dependency expansion directly from POM files, achieving parity with the Java implementation with near-instant startup.
 
 ## Usage
 
-### 1. Generate a CLASSPATH string
+### 1. Transitive Resolution (`mimic`)
+Resolve the full dependency tree for a Maven project directly from its `pom.xml`. This command replicates the functionality of the Java `MimicDependencyResolver` with the performance of native Zig.
+
+```sh
+# Resolve dependencies for the CLI module, scanning the current directory as reactor
+get_deps mimic --pom maven-get-deps-cli/pom.xml --reactor .
+
+# Resolve with a specific local cache and additional remote repository
+get_deps mimic -p pom.xml -c ./target/m2 --repo https://repo.maven.apache.org/maven2
+```
+
+### 2. Generate a CLASSPATH string (`deps`)
 Perfect for use in bash/PowerShell scripts to inject dependencies into an environment variable.
 ```sh
 # Linux/macOS
@@ -19,14 +30,14 @@ $CP_STRING = .\get_deps.exe deps -i deps.txt -cf path --classpath --cache $HOME\
 $env:CLASSPATH = "app.jar;" + $CP_STRING
 ```
 
-### 2. Download missing Jars
+### 3. Download missing Jars
 The tool can act as a lightweight "downloader" for your shared repository.
 ```powershell
 get_deps deps --input dependencies.txt --download --cache /opt/shared/lib
 ```
 This will check `/opt/shared/lib` for each dependency in `dependencies.txt`. If a JAR is missing, it will be downloaded from Maven Central.
 
-### 3. Format Conversion
+### 4. Format Conversion
 Convert a list of paths back to colon format for easier reading or comparison.
 ```powershell
 get_deps deps -i list_of_paths.txt -cf colon

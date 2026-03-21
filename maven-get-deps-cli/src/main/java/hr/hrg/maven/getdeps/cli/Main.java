@@ -21,6 +21,8 @@ public class Main {
         options.addOption("s", "scopes", true, "Comma-separated list of scopes");
         options.addOption("r", "reactor", true, "Reactor path for sibling modules (Mimic only)");
         options.addOption("n", "no-cache", false, "Disable internal caching for Mimic");
+        options.addOption("E", "extended", false, "Extended output format (matches Maven dependency:list)");
+        options.addOption("dm", "debug-match", true, "Filter for mimic debug trace logs (e.g. jaxb-runtime)");
         options.addOption("h", "help", false, "Print this help message");
 
         CommandLineParser parser = new DefaultParser();
@@ -38,6 +40,8 @@ public class Main {
             String reactorPath = cmd.getOptionValue("r");
             boolean useMimic = cmd.hasOption("mimic");
             boolean noCache = cmd.hasOption("no-cache");
+            boolean extended = cmd.hasOption("extended");
+            String debugMatch = cmd.getOptionValue("dm");
 
             if (pomPath == null) {
                 System.err.println("POM path is required (-p)");
@@ -51,10 +55,11 @@ public class Main {
             ResolutionResult result = null;
             if (useMimic) {
                 System.out.println("Using Mimic implementation (noCache=" + noCache + ")...");
-                MimicDependencyResolver mimic = new MimicDependencyResolver(cachePath);
+                MimicDependencyResolver mimic = new MimicDependencyResolver(new File(cachePath), new ArrayList<>());
                 if (reactorPath != null) {
                     mimic.addReactorPath(new File(reactorPath));
                 }
+                if (debugMatch != null) mimic.setDebugFilter(debugMatch);
 
                 // Cold run
                 if (noCache) mimic.clearCache();
@@ -104,10 +109,16 @@ public class Main {
                 }
 
                 System.out.println("Resolved Dependencies (" + finalResult.dependencies().size() + "):");
-                finalResult.dependencies().forEach(dep -> {
-                    File file = finalResult.artifactFiles().get(dep);
-                    System.out.println(dep + " -> " + (file != null ? file.getAbsolutePath() : "NOT FOUND"));
-                });
+                finalResult.dependencies().stream()
+                    .sorted((d1, d2) -> d1.toString().compareTo(d2.toString()))
+                    .forEach(dep -> {
+                        if (extended) {
+                            System.out.println("   " + dep.groupId() + ":" + dep.artifactId() + ":" + dep.type() + ":" + dep.version() + ":" + dep.scope() + " (" + dep.path() + ")");
+                        } else {
+                            File file = finalResult.artifactFiles().get(dep);
+                            System.out.println("   " + dep.toGAV() + " -> " + (file != null ? file.getAbsolutePath() : "NOT FOUND"));
+                        }
+                    });
             }
 
         } catch (ParseException e) {

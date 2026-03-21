@@ -1,56 +1,220 @@
-# Maven Dependency Resolution Internals
+# Dependency Resolution Mimicry
 
-This document provides a technical overview of how Maven (and its `mimic` implementations) resolves transitive dependencies, handles version conflicts, and applies management rules.
+This document details the nuances and challenges encountered while implementing a dependency resolution mimic that matches Maven's behavior exactly.
 
-## 1. Conflict Resolution: "Nearest Wins"
+## Objectives
+The primary goal was to achieve 100% parity with Maven's dependency resolution for the `fgks-back` project, specifically aiming for an exact count of 166 artifacts in the `compile` scope.
 
-Maven uses a **Breadth-First Search (BFS)** strategy to build the dependency tree. This leads to the "Nearest Wins" rule:
+## Key Nuances and Solutions
 
-*   **Mechanism**: The version of a dependency that is at the shallowest depth in the tree is chosen.
-*   **Tie-breaking**: If two versions are at the same depth, the one declared first in the `pom.xml` (or encountered first in the BFS queue) wins.
-*   **Implication**: You can override any transitive dependency version by declaring it as a direct dependency in your project's `pom.xml`.
+### 1. Breadth-First Search (BFS) and "Nearest Wins"
+Maven's dependency resolution is functionally BFS. The first time an artifact (GroupId:ArtifactId) is encountered, its version is fixed. Any subsequent encounters at a deeper level are ignored (unless they are managed).
 
-## 2. Precedence Hierarchy
+**Problem:** Initial implementations incorrectly allowed deeper versions to overwrite or re-evaluate subtrees.
+**Solution:** Implement a strict `resolved_depths` map. If a GA is encountered at a depth greater than or equal to its current resolved depth, skip its registration and its transitive subtree expansion.
 
-When resolving a version for a given `groupId:artifactId`, Maven checks sources in the following order:
+### 2. Scope Propagation
+Scopes are inherited and transformed as you move down the dependency tree.
 
-1.  **Direct Declaration**: Explicit version in the `<dependencies>` section of the project.
-2.  **Root Project Management**: Versions defined in the project's `<dependencyManagement>` section take absolute precedence over all transitive versions.
-3.  **Inherited Management**: Versions from parent POMs' `<dependencyManagement>`.
-4.  **Imported BOMs**: Versions from POMs imported via `<scope>import</scope>` in `<dependencyManagement>`.
-5.  **Transitive Mediation**: The "Nearest Wins" rule applied to the remaining graph.
+**Problem:** Transitive `provided` and `system` dependencies should NOT be included in the `compile` scope.
+**Solution:** Implement a `propagateScope` function that correctly handles these transitions.
+- `direct_compile` -> `child_compile` = `compile`
+- `direct_compile` -> `child_provided` = `provided` (Ignore for transitive)
+- `direct_compile` -> `child_runtime` = `runtime`
+- **Nuance:** Transitive dependencies of a `test` scope dependency must also stay in `test` scope (and thus be excluded if target is `compile/runtime`).
+- **Discovery:** `dependencyManagement` scope SHOULD NOT override a scope explicitly defined in a direct dependency. For example, if a POM says `<scope>test</scope>`, a BOM managing it to `compile` should be ignored.
 
-## 3. Dependency Management & Import Scope
+### 3. BOM Property Inheritance
+BOMs (Bill of Materials) are imported via `<dependencyManagement>`.
+**Problem:** BOMs often use properties (e.g., `${jetty.version}`) that are defined in the project which imports the BOM, NOT inside the BOM itself.
+**Solution:** Ensure that the property resolution context for an imported BOM includes the properties of the importing project (root project context).
 
-The `<dependencyManagement>` section acts as a version catalog.
+### 3. Effective Scope Relevance
+Not all propagated scopes are relevant for a given target scope (e.g., `compile`).
 
-### Import Scope (BOMs)
-*   **Usage**: Used with `type="pom"` and `scope="import"`.
-*   **Effect**: Incorporates the `<dependencyManagement>` of the target POM into the current POM's management section.
-*   **Mimic Implementation**: The `MimicDependencyResolver` must download the BOM, parse its `dependencyManagement` section, and merge it into the current `PomContext`.
+**Problem:** Initially, all non-test scopes were being included.
+**Solution:** Implement a strict `isScopeRelevant` check.
+- For `target=compile`: Include `compile`, `provided` (only direct), `system` (only direct).
+- Transitive `provided` and `system` are excluded.
+- `runtime` is excluded from `compile` resolution (it is used for execution, not compilation).
+- **Implied Scopes**: If the target scope requires both execution and compilation contexts (e.g., `runtime`), the system must proactively include `compile` in its effective resolution scopes, because runtime artifacts fundamentally rely on compile-time artifacts.
 
-## 4. Exclusions
+### 4. Property Resolution
+Maven POMs heavily use properties like `${project.version}` or `${spring-boot.version}`.
 
-Exclusions are **recursive** and **propagated**.
+**Problem:** Missing property resolution leads to `NOT_FOUND` artifacts or incorrect version matching.
+**Solution:** Pre-load all properties from the POM (including parents) into a context and recursively resolve strings.
 
-*   **Logic**: If `A` depends on `B` and excludes `C`, then no transitive dependencies of `B` can pull in `C`.
-*   **Implementation**: A "blacklist" (Set of `groupId:artifactId`) must be passed down each branch of the BFS traversal.
+### 5. Version Ranges
+Some dependencies specify ranges like `[3.0, 4.0)`.
 
-## 5. Implementation Differences (Java vs. Zig)
+**Problem:** These strings are not valid versions for downloading from a repository.
+**Solution:** Sanitize range strings by extracting the base (lower bound) version.
 
-| Feature | Java Mimic | Zig Mimic (Target) |
-| :--- | :--- | :--- |
-| **Search Algorithm** | BFS (Queue) | BFS (Queue) |
-| **Exclusions** | Recursive Set | **[TODO]** Implement recursive propagation |
-| **Import Scope** | Recursive BOM loading | **[TODO]** Implement BOM merging |
-| **Profiles** | Ignored | Ignored (by target) |
-| **Properties** | System > Env > Project | **[TODO]** Align hierarchy |
-| **Version Ranges** | Literal match | Literal match (remove heuristic) |
+### 6. Exclusions
+Exclusions (both GA and G:*) must be propagated down the tree.
 
-## 6. Practical Parity Goals
+**Problem:** Exclusions applied to a direct dependency must also apply to all its transitive children.
+**Solution:** Pass an inherited set of exclusion patterns down each branch of the resolution tree. When using Aether, ensure `org.apache.maven.model.Exclusion` is explicitly mapped to `org.eclipse.aether.graph.Exclusion` in the `CollectRequest`.
 
-To achieve 100% parity with the Java `mimic` version:
+### 8. Conflict Resolution and BOMs
+**Case Study: asm version mismatch**
+- `jetty-project` imports `asm-bom` with version `${asm.version}`.
+- `accessors-smart` explicitly defines `asm` with version `9.7.1`.
+- Maven's BFS ("Nearest wins") decides the winner.
+**Discovery:** Local `dependencyManagement` in the root project (or its parent chain) has the highest priority. If root's parent (e.g., `spring-boot-starter-parent`) manages a version, it overrides transitive versions even if they are closer.
 
-1.  **Exclusions**: Every `Node` in the resolution queue must carry a copy of its parent's exclusions plus any new ones declared on the dependency itself.
-2.  **BOMs**: `PomContext` must be updated to handle `import` scope by transitively loading managed versions.
-3.  **Precedence**: Ensure the `root_ctx` management is checked before any transitive management.
+### 9. Late Property Resolution
+Properties like `${jackson.version}` or `${jetty.version}` are often defined in a parent POM or even in the root project.
+**Solution:** Implement recursive property inheritance. Each `PomContext` includes properties from its parent and the root project context. Resolution must be multi-pass (up to 8 levels) to handle nested property definitions (e.g., `${a}` -> `${b}` -> `1.0`).
+
+
+### 10. Managed Versions and Transitive Overrides
+**Problem:** Some transitive dependencies (e.g., `logback-classic`) were resolving to newer versions (1.5.32) instead of the one managed by Spring Boot (1.5.11).
+**Cause:** Incomplete `dependencyManagement` merging from the parent hierarchy or incorrect property resolution during BOM import.
+
+### 8. Reactor and Multi-module Support
+In multi-module projects, sibling modules must be resolved from the local workspace rather than the remote repository.
+
+**Problem:** Matching only by `artifactId` in the `WorkspaceReader` can be ambiguous if multiple groups use the same ID.
+**Solution:** Implement a `ReactorWorkspaceReader` that matches both `groupId` and `artifactId`. Ensure it scans subdirectories recursively to find all module POMs.
+
+### 9. Automation and Verification Tools
+Matching Maven 100% requires robust comparison tools.
+
+**Problem:** Maven's output (especially `mvnd`) contains ANSI escape codes and formatting that break simple `diff` or `grep` checks.
+**Solution:** 
+- Use an `--extended` output flag in the CLI to produce `groupId:artifactId:type:version:scope` format.
+- Use a verification script (e.g., in Bun/JS) that strips ANSI codes and sorts results before performing a set-based comparison.
+- Implement a generic tracing architecture (e.g., `--debug-match` flag) allowing dynamic tracking of specific GroupIDs/ArtifactIDs through the BFS tree to analyze scope drops or version overrides without relying on hardcoded debug traces.
+
+### 11. Property Precedence and Shadowing
+**Discovery:** Properties must follow a strict precedence: Top-level Overrides (e.g. CLI) > Child POM > Parent POM. 
+- **Problem:** Initial `PomContext` blindly merged parent properties into child, allowing parents to sometimes shadow child properties if not handled carefully during recursion.
+- **Solution:** Explicitly re-apply `inheritedProperties` (top-level) after loading parent and own properties.
+
+### 20. Library-Level `dependencyManagement` Inheritance
+**Discovery:** When resolving transitive dependencies of a library (e.g., `netty-codec-http`), Maven honors that library's own `dependencyManagement` section (and its parent hierarchy) if the child dependency lacks an explicit scope or version.
+- **Example:** `netty-parent` manages `mockito-core` to `test` scope. `netty-codec-http` depends on `mockito-core` with no scope. For `netty-codec-http`, it is a `test` dependency.
+- **Solution:** The resolution context for a library must include its own managed versions and scopes as a secondary priority (overridden only by the root project's management).
+
+### 21. Automatic Parent Properties
+**Discovery:** Maven automatically populates properties like `${project.parent.version}`, `${parent.groupId}`, and `${project.parent.artifactId}` based on the `<parent>` tag.
+- **Problem:** BOMs often use `${project.parent.version}` to align sister modules.
+- **Solution:** Explicitly inject these properties into the `PomContext` during parent detection.
+
+### 22. Dynamic Version Range Resolution
+**Discovery:** Version ranges (e.g., `[3.0, 4.0)`) are not just static strings; they must resolve to the **HIGHEST** matching version currently available in the local repository or remote.
+- **Solution:** Implement a `resolveVersionRange` helper that scans the local repository directory for an artifact, sorts versions descending, and picks the first one that satisfies the range boundaries.
+
+### 12. Deferred Resolution for Managed Dependencies
+**Discovery:** Version strings in `<dependencyManagement>` (BOMs) must be stored in their **RAW** form (e.g., `${jackson.version}`) and resolved later using the consuming project's full property context.
+- **Problem:** Resolving `${...}` too early in the parent/BOM context uses the BOM's own properties, missing overrides defined in the project.
+- **Solution:** Store raw strings in `managedVersions` and call `resolveProperty()` only when the version is actually needed for a dependency.
+
+### 13. BOM Import Property Merging
+**Discovery:** When importing a BOM, the importer's properties must be passed as `inheritedProperties` to the BOM's context.
+- **Solution:** In `PomContext` constructor, pass `this.properties` when calling `loadPomContext` for an imported BOM. Resolve managed versions from the BOM using the BOM's context before merging them.
+
+### 14. Smart Range Matching in Local Repository
+**Discovery:** Maven version ranges like `[3.0, 4.0)` should be resolved to the HIGHEST matching version available in the local repository.
+- **Solution:** Implement a best-guess matcher in `getOrDownload` that sorts local versions descending and picks the first one starting with the same major version prefix.
+
+## Verification
+Parity is verified by comparing against `mvnd dependency:list -Dscope=runtime`.
+- **Target:** 183 artifacts (for `fgks-core-back` runtime scope).
+- **Mimic Status:** 
+  - **100% parity achieved!** The mimic now outputs exactly the same 183 artifacts with matching versions and scopes.
+  - Logback matched exactly (`1.5.11`).
+  - AWS SDK transition tree fully matched (20+ artifacts).
+  - Bugsnag range correctly resolved (`3.8.0`).
+  - Jackson variables resolved using Project Properties.
+  - `amqp-client` correctly resolved to `5.21.0` (Direct version wins over Managed).
+  - `spring-websocket` correctly resolved to `6.2.11` (Direct version wins over Managed).
+  - Test and Provided scopes do not leak into runtime.
+
+## Advanced Resolution Nuances
+
+### 15. Standard Version Precedence
+Maven follows a strict hierarchy for version selection:
+1. **Explicit Direct Version**: The version tag inside a `<dependency>` in the current POM.
+2. **Managed Version**: Versions defined in `<dependencyManagement>` of the current POM or its parents.
+3. **Transitive Version**: Versions defined in the POMs of dependencies ("nearest wins").
+
+### 16. Managed Transitive Overrides
+A version specified in `<dependencyManagement>` ALWAYS overrides any version encountered transitively, even if the transitive encounter is "closer" to the root. However, it DOES NOT override an explicit version in a direct dependency of the current project.
+
+### 17. Scope Propagation Matrix
+When resolving transitively, the scope of a child dependency is filtered by the scope of its parent:
+- **Parent: Compile** -> Child: Compile=Compile, Runtime=Runtime, Provided=null, Test=null.
+- **Parent: Runtime** -> Child: Compile=Runtime, Runtime=Runtime, Provided=null, Test=null.
+- **Parent: Provided** -> Child: Compile=Provided, Runtime=Provided, Provided=null, Test=null.
+- **Parent: Test** -> Child: Compile=Test, Runtime=Test, Provided=null, Test=null.
+*Note: 'null' means the dependency is omitted from the transitive tree.*
+
+### 18. Mediation by Declaration Order
+If two versions of the same artifact are at the same depth and neither is managed, the version from the dependency that was declared FIRST in the POM (top-to-bottom) wins.
+
+### 19. Managed Scope Precedence
+Similar to versions, `dependencyManagement` can provide a default scope if it's missing in the dependency declaration. However, an explicit `<scope>` in a direct dependency always wins over the managed scope. สำหรับ transitive dependencies, both regulated version AND managed scope from the project's `dependencyManagement` should be applied if present.
+
+### 23. Scope Strength Mediation (Tie Breaking)
+**Discovery:** When Maven traverses the dependency tree, it usually follows "nearest wins" (BFS). However, if it encounters the *exact same* dependency at the *exact same depth* but with different scopes, it performs "Scope Strength Mediation".
+- **Example:** `jakarta.inject-api` reached at depth 1 via `hibernate-core` as `runtime`, and later at depth 4 via `jakarta.enterprise.cdi-api` as `compile`. Standard BFS would pick `runtime`. Maven upgrades it to `compile`.
+- **Solution:** In the `resolvedDepths` check, if the new encounter is at the *same* depth as existing one, or even if it's deeper but has a stronger scope, allowed it to overwrite.
+- **Implementation Detail:** Use a `scopeStrength` helper: `compile` (3) > `runtime` (2) > `provided` (1) > `test` (0).
+
+### 24. Root Node Expansion and "Nearest Wins"
+**Discovery:** Direct dependencies defined in the root POM are at depth 0.
+- **Problem:** If root dependencies are not explicitly registered at depth 0 in the BFS tracker before resolution begins, a transitive dependency at depth `N` could overwrite the root dependency's scope (e.g., explicitly defining `test` scope at root overridden by `compile` transitively). 
+- **Solution:** Pre-load all direct dependencies into the depth tracker at depth 0. Additionally, when expanding nodes during BFS, ensure that root nodes are allowed to expand even if another path reaches them at the same depth.
+
+### 25. Ghost Defaults in POM Models
+**Discovery:** Internal representations of POM models must distinguish between "not specified" and "default value".
+- **Problem:** The `PomModel` class initially defaulted all `<dependency>` objects to `scope="compile"` and `type="jar"`. When a BOM defined a dependency in `<dependencyManagement>` without explicitly defining a scope, the model saved it as `compile`. This incorrectly forced all transitive resolutions of that dependency to `compile`, overriding their natural `runtime` scope.
+- **Solution:** `scope` and `type` must default to `null` in the data model. Defaults (like `"compile"` and `"jar"`) should only be applied at the very end of the resolution process when constructing the final `ArtifactDescriptor`, allowing `dependencyManagement` to only override what it explicitly defines.
+
+### 26. Scope Masking by Skipped Dependencies
+**Discovery:** Dependencies with scopes that are NOT in the target resolution list (e.g., `test` or `provided` when resolving `compile`) still participate in "Nearest Wins".
+- **Problem:** If a library is encountered at depth 1 as `test` scope, it should mask any subsequent encounters of that library at depth 2 (e.g., as `compile`). Initially, skipped scopes were entirely ignored, allowing deeper `compile` dependencies to bleed into the final resolution.
+- **Solution:** In the resolution loop, the encounter of a dependency must be recorded in the `resolvedDepths` tracking map *before* deciding whether its scope qualifies it to be added to the queue or final list.
+
+### 27. Effective Propagated Scope Recording
+**Discovery:** The scope assigned to a transitive dependency in the final resolution must be its *propagated* effective scope, not its raw declaration scope.
+- **Problem:** A dependency declared as `runtime` inside a parent that was resolved as `compile` was being recorded as `runtime` instead of `compile`.
+- **Solution:** Apply the `propagateScope(parentScope, childRawScope)` function, and use the *result* (`s`) when creating the `ArtifactDescriptor` to be saved in the `resolved` map.
+
+### 28. Optional Dependency Handling
+**Discovery:** Transitive dependencies marked as `<optional>true</optional>` are skipped by Maven during resolution (unless they are explicitly requested as direct dependencies).
+- **Problem:** If a library (e.g., `netty-codec-http2`) has a dependency on `brotli4j` marked as optional, it should not appear in the final resolution of a project consuming Netty.
+- **Solution:** Maintain a `resolvedOptionals` set. If a dependency is encountered as optional, record it in this set. If a later encounter at the same or closer depth is NOT optional, remove it from the set. Exclude all members of this set from the final result list.
+
+### 29. Transitive Expansion Guard (Nearest Wins Tie-Breaking)
+**Discovery:** The BFS queue must skip expanding subtrees if a "better" (closer or stronger) version of a node is already processed.
+- **Refinement:** The guard check `if (current.depth == oldDepth && oldAd != ad && scopeStrength(ad.scope()) < scopeStrength(oldAd.scope())) continue;` ensures that if we have two paths to the same artifact at the same depth, the one with the stronger scope (e.g., `compile` vs `runtime`) is allowed to proceed and expand its children with that stronger propagated potential.
+
+### 30. Reactor Module Exclusion
+**Discovery:** In multi-module projects, `mvn dependency:list` typically excludes other modules from the same reactor (sibling modules) from the output list, even if the project depends on them.
+- **Problem:** The mimic was including siblings like `fgks-core-back` in its final output, leading to a higher artifact count than Maven's baseline.
+- **Solution:** Identify which dependencies are reactor modules (using the scanned `reactorPomMap`) and exclude them from the final `resultList` if they are part of the current reactor.
+
+### 31. Optional vs. Required Conflict (Nearest Wins Nuance)
+**Discovery:** Maven's "Nearest Wins" principle for version resolution interacts with optionality in a non-obvious way. If the nearest encounter is optional, it is skipped. However, this SHOULD NOT block a deeper encounter that is REQUIRED.
+- **Problem:** The mimic was recording the shallowest encounter (which was optional) in `resolvedDepths`, and then the BFS guard was blocking any deeper encounter for the same artifact, even if the deeper one was required.
+- **Solution:** Refined the BFS guard to allow an encounter to proceed if it is NON-OPTIONAL even when a shallower OPTIONAL encounter already exists.
+
+### 32. Parent Dependency Inheritance
+**Discovery:** Maven children (including transitive dependencies) inherit the `<dependencies>` section from their parent POM chain.
+- **Problem:** Libraries like AWS SDK often define common runtime dependencies (e.g., `apache-client`, `netty-nio-client`) in a shared parent `services-*.pom`. Initially, the mimic only expanded dependencies from the artifact's own POM, missing these inherited ones.
+- **Solution:** In `PomContext.getEffectiveDependencies()`, recursively collect dependencies from the parent context before adding the current artifact's own dependencies.
+
+### 33. Scope Propagation Guard Placement
+**Discovery:** The guard `if (s == null) continue;` (which filters out non-relevant `test`/`provided` scopes) must be placed BEFORE any calls to `resolvedDepths.put` or `resolved.put`.
+- **Problem:** If a dependency is encountered later in the tree with a `test` or `provided` scope, it should be ignored. If the guard is missing or misplaced, this encounter can overwrite a previous valid `compile` or `runtime` resolution in the map with a `null` scope, effectively deleting the artifact from the final output.
+- **Solution:** Ensure `propagateScope` is called early, and the `null` result is used to skip early.
+
+### 34. Artifact Path Preservation during Promotion
+**Discovery:** When promoting the scope of an already resolved artifact (see #23 and #29), the resolution path reported by Maven remains the path of the **FIRST** (shallowest) encounter.
+- **Problem:** If we create a completely new `ArtifactDescriptor` during promotion, we might lose the original path string (e.g., `hibernate-core -> jakarta.inject-api`), replacing it with the path of the deeper promotion source.
+- **Solution:** When performing scope promotion, ensure the `ArtifactDescriptor` is updated only for the `scope` field, while copying the `path` field from the EXISTING descriptor.
+- **Implementation:** `ArtifactDescriptor promoted = new ArtifactDescriptor(oldAd.groupId(), ..., s, ..., oldAd.path());`

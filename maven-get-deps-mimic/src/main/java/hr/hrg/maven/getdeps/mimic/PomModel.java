@@ -132,8 +132,8 @@ public class PomModel {
         private String groupId;
         private String artifactId;
         private String version;
-        private String scope = "compile";
-        private String type = "jar";
+        private String scope;
+        private String type;
         private String classifier;
         private String optional;
         private ExclusionContainer exclusions;

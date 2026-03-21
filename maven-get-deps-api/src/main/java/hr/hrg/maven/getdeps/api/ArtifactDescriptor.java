@@ -11,8 +11,12 @@ public record ArtifactDescriptor(
     String version,
     String scope,
     String classifier,
-    String type
+    String type,
+    String path
 ) {
+    public ArtifactDescriptor(String groupId, String artifactId, String version, String scope, String classifier, String type) {
+        this(groupId, artifactId, version, scope, classifier, type, null);
+    }
     public ArtifactDescriptor(String groupId, String artifactId, String version) {
         this(groupId, artifactId, version, "compile", null, "jar");
     }

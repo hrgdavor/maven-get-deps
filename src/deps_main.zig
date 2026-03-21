@@ -1,5 +1,6 @@
 const std = @import("std");
 const deps_format = @import("deps_format.zig");
+const mimic = @import("mimic/resolver.zig");
 
 pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -16,6 +17,8 @@ pub fn main() !void {
     const command = args[1];
     if (std.mem.eql(u8, command, "deps")) {
         try cmdDeps(allocator, args[2..]);
+    } else if (std.mem.eql(u8, command, "mimic")) {
+        try cmdMimic(allocator, args[2..]);
     } else if (std.mem.eql(u8, command, "--help") or std.mem.eql(u8, command, "-h")) {
         printUsage();
         return;
@@ -213,10 +216,110 @@ fn cmdDeps(allocator: std.mem.Allocator, args: []const []const u8) !void {
     printUsage();
 }
 
+fn cmdMimic(allocator: std.mem.Allocator, args: []const []const u8) !void {
+    var pom_path: ?[]const u8 = null;
+    var cache_dir: ?[]const u8 = null;
+    var reactor_paths = std.array_list.AlignedManaged([]const u8, null).init(allocator);
+    defer reactor_paths.deinit();
+    var extra_repos = std.array_list.AlignedManaged([]const u8, null).init(allocator);
+    defer extra_repos.deinit();
+    var scopes = std.array_list.AlignedManaged([]const u8, null).init(allocator);
+    defer scopes.deinit();
+    var cache_tree: bool = false;
+    var local_only: bool = false;
+    var print_count: bool = false;
+
+    var i: usize = 0;
+    while (i < args.len) : (i += 1) {
+        const arg = args[i];
+        if (std.mem.eql(u8, arg, "--pom") or std.mem.eql(u8, arg, "-p")) {
+            i += 1;
+            if (i < args.len) pom_path = args[i];
+        } else if (std.mem.eql(u8, arg, "--cache") or std.mem.eql(u8, arg, "-c")) {
+            i += 1;
+            if (i < args.len) cache_dir = args[i];
+        } else if (std.mem.eql(u8, arg, "--reactor") or std.mem.eql(u8, arg, "-r")) {
+            i += 1;
+            if (i < args.len) try reactor_paths.append(args[i]);
+        } else if (std.mem.eql(u8, arg, "--repo")) {
+            i += 1;
+            if (i < args.len) try extra_repos.append(args[i]);
+        } else if (std.mem.eql(u8, arg, "--scope") or std.mem.eql(u8, arg, "-s")) {
+            i += 1;
+            if (i < args.len) try scopes.append(args[i]);
+        } else if (std.mem.eql(u8, arg, "--cache-tree")) {
+            cache_tree = true;
+        } else if (std.mem.eql(u8, arg, "--local-only")) {
+            local_only = true;
+        } else if (std.mem.eql(u8, arg, "--count")) {
+            print_count = true;
+        }
+    }
+
+    if (pom_path == null) {
+        std.debug.print("Error: Missing --pom for 'mimic' command\n", .{});
+        printUsage();
+        std.process.exit(1);
+    }
+
+    const source_repo_path = cache_dir orelse blk: {
+        const env_var = if (std.fs.path.sep == '\\') "USERPROFILE" else "HOME";
+        if (std.process.getEnvVarOwned(allocator, env_var)) |home| {
+            break :blk try std.fs.path.join(allocator, &[_][]const u8{ home, ".m2", "repository" });
+        } else |_| {
+            break :blk ".m2/repository";
+        }
+    };
+
+    var resolver = mimic.MimicResolver.init(allocator, source_repo_path);
+    defer resolver.deinit();
+    resolver.cache_enabled = cache_tree;
+    resolver.local_only = local_only;
+
+    for (reactor_paths.items) |rp| try resolver.scanReactor(rp);
+    for (extra_repos.items) |url| try resolver.addRepository(url);
+
+    if (scopes.items.len == 0) {
+        try scopes.append("compile");
+        try scopes.append("runtime");
+    } else {
+        var has_runtime = false;
+        var has_compile = false;
+        for (scopes.items) |s| {
+            if (std.mem.eql(u8, s, "runtime")) has_runtime = true;
+            if (std.mem.eql(u8, s, "compile")) has_compile = true;
+        }
+        if (has_runtime and !has_compile) try scopes.append("compile");
+    }
+
+    const start_ms = std.time.milliTimestamp();
+    const result = try resolver.resolvePom(pom_path.?, scopes.items);
+    const end_ms = std.time.milliTimestamp();
+    
+    var out_buf: [4096]u8 = undefined;
+    var stdout_writer = std.fs.File.stdout().writer(&out_buf);
+    const stdout = &stdout_writer.interface;
+
+    if (print_count) {
+        try stdout.print("{d}\n", .{result.artifacts.len});
+        try stdout.flush();
+    } else {
+        for (result.artifacts) |ad| {
+            try stdout.print("{s}:{s}:{s}:{s}\n", .{ ad.group_id, ad.artifact_id, ad.version, ad.scope });
+            try stdout.flush();
+        }
+    }
+
+    std.debug.print("\nResolution completed in {d} ms (cache: {})\n", .{ end_ms - start_ms, cache_tree });
+
+    for (result.errors) |err| {
+        std.debug.print("Error: {s}\n", .{err});
+    }
+}
+
 fn downloadFile(client: *std.http.Client, url: []const u8, dest_path: []const u8) !void {
     const uri = try std.Uri.parse(url);
 
-    // Ensure directory exists
     if (std.fs.path.dirname(dest_path)) |dir| {
         try std.fs.cwd().makePath(dir);
     }

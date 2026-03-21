@@ -19,12 +19,25 @@ public class MimicDependencyResolver implements DependencyResolver {
     private final List<File> reactorPaths = new ArrayList<>();
     private final Map<String, File> reactorPomMap = new HashMap<>();
     private final Map<File, PomModel> pomCache = new HashMap<>();
-    private final Map<File, File> canonicalCache = new HashMap<>();
     private static final String CENTRAL_URL = "https://repo1.maven.org/maven2/";
     private final Set<String> repoUrls = new LinkedHashSet<>(Collections.singletonList(CENTRAL_URL));
+    private final Map<File, PomContext> contexts = new HashMap<>();
 
-    public MimicDependencyResolver(String localRepoPath) {
-        this.localRepo = new File(localRepoPath);
+    private String debugFilter = null;
+
+    public void setDebugFilter(String debugFilter) {
+        this.debugFilter = debugFilter;
+    }
+
+    public boolean isDebugMatch(String gid, String aid) {
+        if (debugFilter == null || debugFilter.isEmpty()) return false;
+        if (debugFilter.equals("ALL")) return true;
+        return (gid != null && gid.contains(debugFilter)) || (aid != null && aid.contains(debugFilter));
+    }
+
+    public MimicDependencyResolver(File localRepo, List<File> reactorPaths) {
+        this.localRepo = localRepo;
+        this.reactorPaths.addAll(reactorPaths);
     }
 
     public void addReactorPath(File path) {
@@ -41,6 +54,9 @@ public class MimicDependencyResolver implements DependencyResolver {
         Set<String> exclusions;
         int depth;
         Node parentNode;
+        PomContext context;
+        String path;
+        boolean isReactor;
 
         Node(ArtifactDescriptor ad, Set<String> exclusions, int depth, Node parentNode) {
             this.ad = ad;
@@ -48,171 +64,233 @@ public class MimicDependencyResolver implements DependencyResolver {
             this.depth = depth;
             this.parentNode = parentNode;
         }
-        
-        String getPath() {
-            if (parentNode == null) return ad.artifactId();
-            return parentNode.getPath() + " -> " + ad.artifactId();
-        }
     }
 
     public void clearCache() {
         pomCache.clear();
-        canonicalCache.clear();
         reactorPomMap.clear();
         contexts.clear();
     }
 
     @Override
     public ResolutionResult resolve(List<ArtifactDescriptor> artifacts) {
-        // Default call for backward compatibility, assumes all scopes are relevant and no project-level overrides
-        return resolve(artifacts, List.of("compile", "runtime", "provided", "system", "test"), Collections.emptyMap(), Collections.emptyMap(), null);
+        List<Node> rootNodes = new ArrayList<>();
+        Map<String, ArtifactDescriptor> resolved = new LinkedHashMap<>();
+        Map<String, Integer> resolvedDepths = new HashMap<>();
+        for (ArtifactDescriptor ad : artifacts) {
+            String ga = ad.groupId() + ":" + ad.artifactId();
+            resolvedDepths.put(ga, 0);
+            resolved.put(ga, ad);
+            rootNodes.add(new Node(ad, Collections.emptySet(), 0, null));
+        }
+        return resolve(rootNodes, List.of("compile", "runtime", "provided", "system", "test"), Collections.emptyMap(), null, resolved, resolvedDepths, new HashSet<>());
     }
 
-    private ResolutionResult resolve(List<ArtifactDescriptor> artifacts, List<String> effectiveScopes, Map<String, String> projectScopes, Map<String, String> projectVersions, PomContext rootCtx) {
-        List<ArtifactDescriptor> result = new ArrayList<>();
+    public static String propagateScope(String parentScope, String childScope) {
+        if (childScope == null || childScope.isEmpty()) childScope = "compile";
+        if (parentScope == null || parentScope.isEmpty()) parentScope = "compile";
+
+        if ("provided".equals(childScope) || "test".equals(childScope)) return null;
+
+        if ("compile".equals(parentScope)) return childScope;
+        if ("runtime".equals(parentScope)) {
+            if ("compile".equals(childScope)) return "runtime";
+            return childScope;
+        }
+        if ("provided".equals(parentScope)) {
+            if ("compile".equals(childScope) || "runtime".equals(childScope)) return "provided";
+            return null;
+        }
+        if ("test".equals(parentScope)) {
+            if ("compile".equals(childScope) || "runtime".equals(childScope)) return "test";
+            return null;
+        }
+        return childScope;
+    }
+
+    public static int scopeStrength(String scope) {
+        if (scope == null || scope.equals("compile")) return 3;
+        if (scope.equals("runtime")) return 2;
+        if (scope.equals("provided")) return 1;
+        if (scope.equals("test")) return 0;
+        return -1;
+    }
+
+    private ResolutionResult resolve(List<Node> rootNodes, List<String> effectiveScopes, Map<String, String> projectScopes, PomContext rootCtx, Map<String, ArtifactDescriptor> resolved, Map<String, Integer> resolvedDepths, Set<String> resolvedOptionals) {
+        List<ArtifactDescriptor> resultList = new ArrayList<>();
         Map<ArtifactDescriptor, File> artifactFiles = new HashMap<>();
         List<String> errors = new ArrayList<>();
         
-        // GA -> version (first one at shallowest depth wins)
-        Map<String, String> resolvedVersions = new HashMap<>();
-        // GA -> depth
-        Map<String, Integer> resolvedDepths = new HashMap<>();
 
-        for (Map.Entry<String, String> entry : projectVersions.entrySet()) {
-            resolvedVersions.put(entry.getKey(), entry.getValue());
-            resolvedDepths.put(entry.getKey(), 0);
-        }
-        
-        Deque<Node> queue = new ArrayDeque<>();
-        for (ArtifactDescriptor ad : artifacts) {
-            String ga = ad.groupId() + ":" + ad.artifactId();
-            resolvedVersions.put(ga, ad.version());
-            resolvedDepths.put(ga, 0);
-            queue.add(new Node(ad, Collections.emptySet(), 0, null));
-        }
-
+        Deque<Node> queue = new ArrayDeque<>(rootNodes);
 
         while (!queue.isEmpty()) {
             Node current = queue.poll();
             ArtifactDescriptor ad = current.ad;
             String ga = ad.groupId() + ":" + ad.artifactId();
             
-            if (resolvedVersions.containsKey(ga)) {
-                if (current.depth > resolvedDepths.get(ga)) {
+            if (resolvedDepths.containsKey(ga)) {
+                int oldDepth = resolvedDepths.get(ga);
+                if (current.depth > oldDepth) continue;
+                // If the currently registered descriptor for this depth has a stronger scope, cancel
+                ArtifactDescriptor oldAd = resolved.get(ga);
+                if (current.depth == oldDepth && oldAd != ad && scopeStrength(ad.scope()) < scopeStrength(oldAd.scope())) {
                     continue;
                 }
             }
-            
 
-            resolvedVersions.put(ga, ad.version());
+
             resolvedDepths.put(ga, current.depth);
+            resolved.put(ga, ad);
 
             try {
                 File jarFile = getOrDownload(ad, ad.type(), null);
-                if (jarFile != null && jarFile.exists()) {
-                    artifactFiles.put(ad, jarFile);
-                }
+                if (jarFile != null && jarFile.exists()) artifactFiles.put(ad, jarFile);
 
                 File pomFile = getOrDownload(ad, "pom", null);
+                if (isDebugMatch(ad.groupId(), ad.artifactId())) {
+                    System.err.println("MIMIC: [POM-CHECK] " + ad + " pomFile=" + pomFile + " exists=" + (pomFile != null && pomFile.exists()));
+                }
                 if (pomFile != null && pomFile.exists()) {
-                    PomContext ctx = loadPomContext(pomFile);
+                    PomContext ctx = loadPomContext(pomFile, Collections.emptyMap());
                     
-                    // Collect all dependencies from the entire parent hierarchy with their contexts
-                    class DepWithCtx { 
-                        PomModel.Dependency dep; 
-                        PomContext ctx; 
-                        DepWithCtx(PomModel.Dependency d, PomContext c) { dep = d; ctx = c; } 
-                    }
-                    List<DepWithCtx> allDeps = new ArrayList<>();
-                    PomContext currentCtx = ctx;
-                    while (currentCtx != null) {
-                        if (currentCtx.pom.getDependencies() != null && currentCtx.pom.getDependencies().getDependencyList() != null) {
-                            for (PomModel.Dependency d : currentCtx.pom.getDependencies().getDependencyList()) {
-                                allDeps.add(new DepWithCtx(d, currentCtx));
-                            }
+                    for (PomModel.Dependency dep : ctx.getEffectiveDependencies()) {
+                        String dGid = ctx.resolveProperty(dep.getGroupId());
+                        String dAid = ctx.resolveProperty(dep.getArtifactId());
+                        String gaTrans = dGid + ":" + dAid;
+                        if (current.exclusions.contains(gaTrans)) {
+                            if (isDebugMatch(dGid, dAid)) System.err.println("MIMIC: [EXCLUDE-SKIP] " + gaTrans + " in " + ad);
+                            continue;
                         }
-                        currentCtx = currentCtx.parent;
-                    }
-
-                    for (DepWithCtx dc : allDeps) {
-                        PomModel.Dependency dep = dc.dep;
-                        PomContext dCtx = dc.ctx;
-                        String dGid = dCtx.resolveProperty(dep.getGroupId());
-                        String dAid = dCtx.resolveProperty(dep.getArtifactId());
-                        
-                        // Check exclusions from parent node
-                        if (current.exclusions.contains(dGid + ":" + dAid) || current.exclusions.contains(dGid + ":*")) {
+                        if (current.exclusions.contains(dGid + ":*")) {
+                            if (isDebugMatch(dGid, dAid)) System.err.println("MIMIC: [EXCLUDE-SKIP] " + dGid + ":* matches " + gaTrans + " in " + ad);
                             continue;
                         }
 
-                        String scope = dCtx.resolveProperty(dep.getScope());
-                        if (scope == null) scope = "compile";
+                        String rawScope = ctx.resolveProperty(dep.getScope());
                         
-                        // project level scope override (nearest wins)
-                        String pScope = projectScopes.get(dGid + ":" + dAid);
-                        if (pScope != null) {
-                            if (!effectiveScopes.contains(pScope)) continue; // project scope test/provided -> ignore
-                            scope = pScope;
+                        // 1. Resolve raw data from declaration
+                        String rawV = dep.getVersion();
+                        String rawS = dep.getScope();
+                        
+                        // 2. Apply Library's own dependency management (highest priority for the library itself)
+                        String libManagedV = ctx.getManagedVersion(dGid, dAid);
+                        String libManagedS = ctx.getManagedScope(dGid, dAid);
+                        
+                        // 3. Resolve using library context properties
+                        String dV = ctx.resolveProperty(rawV != null ? rawV : libManagedV);
+                        String dS = ctx.resolveProperty(rawS != null ? rawS : (libManagedS != null ? libManagedS : "compile"));
+                        
+                        // 4. Apply Root project dependency management overrides (absolute highest priority)
+                        String rootManagedV = rootCtx == null ? null : rootCtx.getManagedVersion(dGid, dAid);
+                        String rootManagedS = rootCtx == null ? null : rootCtx.getManagedScope(dGid, dAid);
+                        
+                        // Reactor nuance: dependencies of reactor modules use their own versions, 
+                        // unless they are unversioned and need management from their OWN context.
+                        // Root management usually DOES NOT override explicit versions from reactor modules.
+                        String vRange = dV;
+                        if (rootManagedV != null) {
+                            vRange = rootManagedV;
                         }
+                        
+                        if (vRange == null) continue; // Skip if no version found
 
-                        // Transitive scope propagation (simplified)
-                        if (effectiveScopes.contains(scope)) { // Use effectiveScopes to filter
-                            if (!"true".equals(dep.getOptional())) {
-                                String managedV = rootCtx == null ? null : rootCtx.getManagedVersion(dGid, dAid);
-                                String managedS = rootCtx == null ? null : rootCtx.getManagedScope(dGid, dAid);
-                                
-                                String v = managedV != null ? managedV : dCtx.resolveProperty(dep.getVersion());
-                                String s = managedS != null ? managedS : scope;
-                                
-                                if (v != null && effectiveScopes.contains(s)) {
-                                    Set<String> nextExclusions = new HashSet<>(current.exclusions);
-                                    if (dep.getExclusions() != null) {
-                                        for (PomModel.Exclusion ex : dep.getExclusions().getExclusionList()) {
-                                            nextExclusions.add(dCtx.resolveProperty(ex.getGroupId()) + ":" + dCtx.resolveProperty(ex.getArtifactId()));
-                                        }
-                                    }
+                        String v = resolveVersionRange(new ArtifactDescriptor(dGid, dAid, vRange, null, null, null));
+                        String sRaw = rootManagedS != null ? rootManagedS : dS;
+                        
+                        // 5. Propagate scope from parent to child
+                        String s = propagateScope(ad.scope(), sRaw);
+                        if (s == null) continue;
+                        
+                        gaTrans = dGid + ":" + dAid;
+                        int nextDepth = current.depth + 1;
 
-                                    if (dAid.contains("junit") || dAid.contains("HikariCP") || dAid.contains("classmate")) {
-                                        System.out.println("DEBUG: Adding " + dAid + " path=" + current.getPath() + " -> " + dAid + " scope=" + s + " (orig=" + scope + ") rootScope=" + (rootCtx != null ? rootCtx.getManagedScope(dGid, dAid) : "null"));
+                        boolean alreadyHaveBetter = false;
+                        if (resolvedDepths.containsKey(gaTrans)) {
+                            int oldDepth = resolvedDepths.get(gaTrans);
+                            ArtifactDescriptor oldAd = resolved.get(gaTrans);
+                            boolean oldIsOpt = resolvedOptionals.contains(gaTrans);
+                            boolean currentIsOpt = "true".equals(dep.getOptional());
+                            
+                            if (oldDepth <= nextDepth) {
+                                // Scope promotion
+                                if (oldAd != null && scopeStrength(s) > scopeStrength(oldAd.scope())) {
+                                    ArtifactDescriptor promoted = new ArtifactDescriptor(oldAd.groupId(), oldAd.artifactId(), oldAd.version(), s, oldAd.classifier(), oldAd.type(), oldAd.path());
+                                    resolved.put(gaTrans, promoted);
+                                    if (isDebugMatch(dGid, dAid) || gaTrans.contains("inject") || gaTrans.contains("xml.bind")) {
+                                        System.err.println("MIMIC: [SCOPE-PROMOTE] " + gaTrans + " from " + oldAd.scope() + " to " + s + " at depth " + nextDepth + " via " + ad.groupId() + ":" + ad.artifactId());
                                     }
-                                    ArtifactDescriptor transitive = new ArtifactDescriptor(
-                                        dGid, dAid, v, s, dep.getClassifier(), dep.getType()
-                                    );
-                                    queue.add(new Node(transitive, nextExclusions, current.depth + 1, current));
                                 }
+
+                                if (oldDepth < nextDepth) {
+                                    alreadyHaveBetter = true;
+                                } else if (oldDepth == nextDepth) {
+                                    if (!(oldIsOpt && !currentIsOpt)) {
+                                        alreadyHaveBetter = true;
+                                    }
+                                }
+                            }
+                        }
+                        if (alreadyHaveBetter) {
+                            if (isDebugMatch(dGid, dAid) && (gaTrans.contains("inject") || gaTrans.contains("xml.bind"))) {
+                                System.err.println("MIMIC: [TRANS-BLOCK] " + gaTrans + " depth=" + nextDepth + " s=" + s + " parent=" + ad.groupId() + ":" + ad.artifactId());
+                            }
+                            continue;
+                        }
+                        
+                        // Create Descriptor to record with the PROPAGATED scope 's'
+                        String dType = dep.getType();
+                        if (dType == null) dType = "jar";
+                        String nextPath = current.path + " -> " + dGid + ":" + dAid + ":" + v;
+                        ArtifactDescriptor transitive = new ArtifactDescriptor(dGid, dAid, v, s, dep.getClassifier(), dType, nextPath);
+                        
+                        resolvedDepths.put(gaTrans, nextDepth);
+                        resolved.put(gaTrans, transitive);
+                        boolean isOpt = "true".equals(dep.getOptional());
+                        if (isOpt) {
+                            resolvedOptionals.add(gaTrans);
+                            if (isDebugMatch(dGid, dAid)) System.err.println("MIMIC: [OPT-ADD] " + gaTrans + " parent: " + ad);
+                        } else {
+                            if (resolvedOptionals.remove(gaTrans)) {
+                                if (isDebugMatch(dGid, dAid)) System.err.println("MIMIC: [OPT-REM] " + gaTrans + " parent: " + ad);
+                            }
+                        }
+                        
+                        if (s != null && effectiveScopes.contains(s) && !isOpt) {
+                            if (isDebugMatch(dGid, dAid)) {
+                                System.err.println("MIMIC: [TRANS-ADD] " + dGid+":"+dAid+":"+v + " (s=" + s + ") depth=" + nextDepth + " parent: " + ad);
+                            }
+
+                            Set<String> nextExclusions = new HashSet<>(current.exclusions);
+                            if (dep.getExclusions() != null) {
+                                for (PomModel.Exclusion ex : dep.getExclusions().getExclusionList()) {
+                                    nextExclusions.add(ctx.resolveProperty(ex.getGroupId()) + ":" + ctx.resolveProperty(ex.getArtifactId()));
+                                }
+                            }
+
+                            Node nextNode = new Node(transitive, nextExclusions, nextDepth, current);
+                            nextNode.path = nextPath;
+                            nextNode.isReactor = reactorPomMap.containsKey(gaTrans);
+                            queue.add(nextNode);
+                        } else {
+                            if (isDebugMatch(dGid, dAid)) {
+                                System.err.println("MIMIC: [TRANS-SKIP-SCOPE] " + dGid+":"+dAid+":"+v + " (s=" + s + ", isOpt=" + isOpt + ") depth=" + nextDepth + " parent: " + ad);
                             }
                         }
                     }
                 }
-
             } catch (Exception e) {
                 errors.add("Error resolving " + ad + ": " + e.getMessage());
             }
         }
 
-        // Build final list based on resolvedVersions
-        for (Map.Entry<String, String> entry : resolvedVersions.entrySet()) {
-            String[] parts = entry.getKey().split(":");
-            String gid = parts[0];
-            String aid = parts[1];
-            String ver = entry.getValue();
-            
-            // Try to find original descriptor to preserve classifier/type
-            ArtifactDescriptor found = null;
-            for (ArtifactDescriptor a : artifactFiles.keySet()) {
-                if (a.groupId().equals(gid) && a.artifactId().equals(aid) && a.version().equals(ver)) {
-                    found = a;
-                    break;
-                }
+        for (ArtifactDescriptor adResolved : resolved.values()) {
+            String ga = adResolved.groupId() + ":" + adResolved.artifactId();
+            if (effectiveScopes.contains(adResolved.scope()) && !resolvedOptionals.contains(ga)) {
+                resultList.add(adResolved);
             }
-            if (found == null) {
-                // fallback if not in artifactFiles (e.g. if getOrDownload failed but we still want it in the list)
-                found = new ArtifactDescriptor(gid, aid, ver, "compile", null, "jar");
-            }
-            result.add(found);
         }
-
-        return new ResolutionResult(result, artifactFiles, errors);
+        return new ResolutionResult(resultList, artifactFiles, errors);
     }
 
     @Override
@@ -222,50 +300,76 @@ public class MimicDependencyResolver implements DependencyResolver {
 
     @Override
     public ResolutionResult resolve(Path pomPath, List<String> scopes) {
-
         List<String> effectiveScopes = new ArrayList<>(scopes);
-        if (effectiveScopes.contains("runtime") && !effectiveScopes.contains("compile")) {
-            effectiveScopes.add("compile");
-        }
+        if (effectiveScopes.contains("runtime") && !effectiveScopes.contains("compile")) effectiveScopes.add("compile");
         try {
+            System.err.println("MIMIC: Resolving POM: " + pomPath);
             contexts.clear();
-            if (reactorPomMap.isEmpty()) {
-                for (File reactor : reactorPaths) {
-                    scanReactor(reactor);
-                }
-            }
+            if (reactorPomMap.isEmpty()) for (File reactor : reactorPaths) scanReactor(reactor);
 
-            PomContext ctx = loadPomContext(pomPath.toFile());
+            PomContext ctx = loadPomContext(pomPath.toFile(), Collections.emptyMap());
+            System.err.println("MIMIC: Root POM loaded. Managed entries: " + ctx.managedVersions.size());
 
             Map<String, String> projectScopes = new HashMap<>();
-            Map<String, String> projectVersions = new HashMap<>();
-            List<ArtifactDescriptor> rootDeps = new ArrayList<>();
-            if (ctx.pom.getDependencies() != null && ctx.pom.getDependencies().getDependencyList() != null) {
-                for (PomModel.Dependency dep : ctx.pom.getDependencies().getDependencyList()) {
-                    String dGid = ctx.resolveProperty(dep.getGroupId());
-                    String dAid = ctx.resolveProperty(dep.getArtifactId());
-                    String scope = ctx.resolveProperty(dep.getScope());
-                    if (scope == null) scope = "compile";
-                    
-                    String v = ctx.resolveProperty(dep.getVersion());
-                    if (v == null) v = ctx.getManagedVersion(dGid, dAid);
-                    
-                    if (v != null) {
-                        projectScopes.put(dGid + ":" + dAid, scope);
-                        projectVersions.put(dGid + ":" + dAid, v);
+            List<Node> rootNodes = new ArrayList<>();
+            Map<String, ArtifactDescriptor> resolved = new HashMap<>();
+            Map<String, Integer> resolvedDepths = new HashMap<>();
+            Set<String> resolvedOptionals = new HashSet<>();
 
-                        if (effectiveScopes.contains(scope)) {
-                            ArtifactDescriptor ad = new ArtifactDescriptor(
-                                dGid, dAid, v, scope, dep.getClassifier(), dep.getType()
-                            );
-                            rootDeps.add(ad);
+            for (PomModel.Dependency dep : ctx.getEffectiveDependencies()) {
+                String dGid = ctx.resolveProperty(dep.getGroupId());
+                String dAid = ctx.resolveProperty(dep.getArtifactId());
+                String dV = ctx.resolveProperty(dep.getVersion());
+                String dS = ctx.resolveProperty(dep.getScope());
+                
+                String managedV = ctx.getManagedVersion(dGid, dAid);
+                String vRaw = (dV != null) ? dV : managedV;
+                String v = vRaw;
+                if (v != null && (v.startsWith("[") || v.startsWith("("))) {
+                    v = resolveVersionRange(new ArtifactDescriptor(dGid, dAid, v, null, null, null));
+                }
+                String managedS = ctx.getManagedScope(dGid, dAid);
+                // Direct dependency scope ALWAYS wins over managed scope
+                String s = (dS != null) ? dS : (managedS != null ? managedS : "compile");
+
+                if (v != null) {
+                    projectScopes.put(dGid + ":" + dAid, s);
+                    String ga = dGid + ":" + dAid;
+                    String dType = dep.getType();
+                    if (dType == null) dType = "jar";
+                    ArtifactDescriptor ad = new ArtifactDescriptor(dGid, dAid, v, s, dep.getClassifier(), dType);
+                    
+                    // Register EVERYTHING at depth 0 to ensure "Nearest Wins" for test/provided scopes too!
+                    resolvedDepths.put(ga, 0);
+                    resolved.put(ga, ad);
+                    boolean isOpt = "true".equals(dep.getOptional());
+                    if (isOpt) {
+                        resolvedOptionals.add(ga);
+                        if (isDebugMatch(dGid, dAid)) System.err.println("MIMIC: [OPT-ROOT] " + ga);
+                    }
+
+                    if (effectiveScopes.contains(s) && !"test".equals(s) && !"provided".equals(s) && !isOpt) {
+                        Set<String> exclusions = new HashSet<>();
+                        if (dep.getExclusions() != null) {
+                            for (PomModel.Exclusion ex : dep.getExclusions().getExclusionList()) {
+                                exclusions.add(ctx.resolveProperty(ex.getGroupId()) + ":" + ctx.resolveProperty(ex.getArtifactId()));
+                            }
+                        }
+                        
+                        Node rn = new Node(ad, exclusions, 0, null);
+                        rn.path = ga;
+                        rn.isReactor = reactorPomMap.containsKey(ga);
+                        rootNodes.add(rn);
+                        
+                        if (isDebugMatch(dGid, dAid)) {
+                            System.err.println("MIMIC: [ROOTADD ] " + dGid+":"+dAid+":"+v + " (s=" + s + ")");
                         }
                     }
+                } else {
+                    System.err.println("MIMIC: [ROOTSKIP] " + dGid+":"+dAid + " (no version)");
                 }
             }
-
-            return resolve(rootDeps, effectiveScopes, projectScopes, projectVersions, ctx);
-
+            return resolve(rootNodes, effectiveScopes, projectScopes, ctx, resolved, resolvedDepths, resolvedOptionals);
         } catch (Exception e) {
             e.printStackTrace();
             return new ResolutionResult(Collections.emptyList(), Collections.emptyMap(), List.of(e.getMessage()));
@@ -280,187 +384,377 @@ public class MimicDependencyResolver implements DependencyResolver {
                 PomModel model = PomModel.parse(pom);
                 String gid = model.getGroupId();
                 if (gid == null && model.getParent() != null) gid = model.getParent().getGroupId();
-                if (gid != null && model.getArtifactId() != null) {
-                    reactorPomMap.put(gid + ":" + model.getArtifactId(), pom);
-                }
-            } catch (Exception e) {
-                // ignore
-            }
+                if (gid != null && model.getArtifactId() != null) reactorPomMap.put(gid + ":" + model.getArtifactId(), pom);
+            } catch (Exception e) {}
         }
         File[] files = dir.listFiles();
         if (files != null) {
             for (File f : files) {
                 if (f.isDirectory()) {
                     String name = f.getName();
-                    if (name.startsWith(".") || "target".equals(name) || "bin".equals(name) || "deploy".equals(name) || "node_modules".equals(name)) {
-                        continue;
-                    }
+                    if (name.startsWith(".") || "target".equals(name) || "node_modules".equals(name)) continue;
                     scanReactor(f);
                 }
             }
         }
     }
 
-    private final Map<File, PomContext> contexts = new HashMap<>();
-
-    private PomContext loadPomContext(File pomFileIn) throws Exception {
-        File pomFile = canonicalCache.get(pomFileIn);
-        if (pomFile == null) {
-            pomFile = pomFileIn.getCanonicalFile();
-            canonicalCache.put(pomFileIn, pomFile);
-        }
+    private PomContext loadPomContext(File pomFileIn, Map<String, String> inheritedProperties) throws Exception {
+        File pomFile = pomFileIn.getCanonicalFile();
         if (contexts.containsKey(pomFile)) return contexts.get(pomFile);
         
+        System.err.println("MIMIC: Loading context for: " + pomFile);
         PomModel pom = pomCache.get(pomFile);
         if (pom == null) {
             pom = PomModel.parse(pomFile);
             pomCache.put(pomFile, pom);
-            if (pom.getRepositories() != null && pom.getRepositories().getRepositoryList() != null) {
-                for (PomModel.Repository repo : pom.getRepositories().getRepositoryList()) {
-                    if (repo.getUrl() != null) addRepository(repo.getUrl());
-                }
-            }
         }
         
         PomContext parentCtx = null;
         if (pom.getParent() != null) {
-            String pgid = pom.getParent().getGroupId();
-            String paid = pom.getParent().getArtifactId();
-            String pv = pom.getParent().getVersion();
+            String pgid = resolveProperty(pom.getParent().getGroupId(), inheritedProperties);
+            String paid = resolveProperty(pom.getParent().getArtifactId(), inheritedProperties);
+            String pv = resolveProperty(pom.getParent().getVersion(), inheritedProperties);
             
+            System.err.println("MIMIC: Parent detected: " + pgid + ":" + paid + ":" + pv);
             ArtifactDescriptor parentAd = new ArtifactDescriptor(pgid, paid, pv, "pom", null, "pom");
-            // Check relativePath
             File parentFile = null;
             String relPath = pom.getParent().getRelativePath();
             if (relPath == null) relPath = "../pom.xml";
             
             if (!relPath.isEmpty()) {
                 File relFile = new File(pomFile.getParentFile(), relPath);
-                if (relFile.exists() && relFile.isFile()) {
-                    parentFile = relFile;
-                } else if (relFile.exists() && relFile.isDirectory()) {
-                    parentFile = new File(relFile, "pom.xml");
-                }
+                if (relFile.isDirectory()) relFile = new File(relFile, "pom.xml");
+                if (relFile.exists() && relFile.isFile()) parentFile = relFile;
             }
 
-            if (parentFile == null || !parentFile.exists()) {
-                parentFile = getOrDownload(parentAd, "pom", null);
-            }
-
+            if (parentFile == null || !parentFile.exists()) parentFile = getOrDownload(parentAd, "pom", null);
             if (parentFile != null && parentFile.exists()) {
-                parentCtx = loadPomContext(parentFile);
+                parentCtx = loadPomContext(parentFile, inheritedProperties);
             }
         }
 
-        PomContext ctx = new PomContext(pom, this, parentCtx);
+        PomContext ctx = new PomContext(pom, this, parentCtx, inheritedProperties);
         contexts.put(pomFile, ctx); 
         return ctx;
     }
 
+    private String resolveProperty(String val, Map<String, String> props) {
+        if (val == null || !val.contains("${")) return val;
+        
+        String lastVal = null;
+        int depth = 0;
+        // Loop for recursive resolution, up to a certain depth to prevent infinite loops
+        while (val.contains("${") && !val.equals(lastVal) && depth < 10) {
+            lastVal = val; // Store current value to detect if no changes occurred
+            boolean changedThisIteration = false;
+            for (Map.Entry<String, String> entry : props.entrySet()) {
+                if (entry.getValue() != null) {
+                    String needle = "${" + entry.getKey() + "}";
+                    if (val.contains(needle)) {
+                        val = val.replace(needle, entry.getValue());
+                        changedThisIteration = true;
+                    }
+                }
+            }
+            if (!changedThisIteration && val.contains("${")) {
+                // If no properties from 'props' changed the value, but it still contains placeholders,
+                // it means they might be unresolved or refer to properties not in 'props'.
+                // For this specific method, we only resolve against 'props'.
+                break; 
+            }
+            depth++;
+        }
+        return val;
+    }
+
     private static class PomContext {
         final PomModel pom;
+        final MimicDependencyResolver resolver;
         final PomContext parent;
         final Map<String, String> managedVersions = new HashMap<>();
         final Map<String, String> managedScopes = new HashMap<>();
+        final Map<String, String> properties = new HashMap<>();
 
-        PomContext(PomModel pom, MimicDependencyResolver resolver, PomContext parent) {
+        public PomContext(PomModel pom, MimicDependencyResolver resolver, PomContext parent, Map<String, String> inheritedProperties) {
             this.pom = pom;
+            this.resolver = resolver;
             this.parent = parent;
+            
+            // Priority: inherited > own > parent
+            if (parent != null) this.properties.putAll(parent.properties);
+            
+            if (pom.getProperties() != null) {
+                for (Map.Entry<String, Object> entry : pom.getProperties().entrySet()) {
+                    String val = PomModel.extractText(entry.getValue());
+                    if (val != null) {
+                        if (resolver.isDebugMatch(entry.getKey(), "")) {
+                            System.err.println("MIMIC: [CTX-OWN  ] " + entry.getKey() + "=" + val + " in " + pom.getArtifactId());
+                        }
+                        this.properties.put(entry.getKey(), val);
+                    }
+                }
+            }
+            
+            if (resolver.debugFilter != null) {
+                for (Map.Entry<String, String> entry : inheritedProperties.entrySet()) {
+                    if (entry.getKey().contains(resolver.debugFilter)) {
+                        System.err.println("MIMIC: [CTX-INHER] " + entry.getKey() + "=" + entry.getValue() + " overriding in " + pom.getArtifactId());
+                    }
+                }
+            }
+            this.properties.putAll(inheritedProperties);
+            
+            // Explicitly handle project properties for own resolution
+            String projectVer = pom.getVersion();
+            if (projectVer == null && pom.getParent() != null) projectVer = pom.getParent().getVersion();
+            if (projectVer != null) {
+                this.properties.put("project.version", projectVer);
+                this.properties.put("version", projectVer);
+            }
+            String projectGid = pom.getGroupId();
+            if (projectGid == null && pom.getParent() != null) projectGid = pom.getParent().getGroupId();
+            if (projectGid != null) {
+                this.properties.put("project.groupId", projectGid);
+                this.properties.put("groupId", projectGid);
+            }
+            String projectAid = pom.getArtifactId();
+            if (projectAid != null) {
+                this.properties.put("project.artifactId", projectAid);
+                this.properties.put("artifactId", projectAid);
+            }
+            if (pom.getParent() != null) {
+                String pV = pom.getParent().getVersion();
+                String pG = pom.getParent().getGroupId();
+                String pA = pom.getParent().getArtifactId();
+                if (pV != null) {
+                    this.properties.put("project.parent.version", pV);
+                    this.properties.put("parent.version", pV);
+                }
+                if (pG != null) {
+                    this.properties.put("project.parent.groupId", pG);
+                    this.properties.put("parent.groupId", pG);
+                }
+                if (pA != null) {
+                    this.properties.put("project.parent.artifactId", pA);
+                    this.properties.put("parent.artifactId", pA);
+                }
+            }
+
+            if (parent != null) {
+                managedVersions.putAll(parent.managedVersions);
+                managedScopes.putAll(parent.managedScopes);
+            }
+            
             if (pom.getDependencyManagement() != null && pom.getDependencyManagement().getDependencies() != null) {
                 for (PomModel.Dependency dep : pom.getDependencyManagement().getDependencies().getDependencyList()) {
                     String dGid = resolveProperty(dep.getGroupId());
                     String dAid = resolveProperty(dep.getArtifactId());
-                    String dScope = resolveProperty(dep.getScope());
+                    String dScope = dep.getScope(); // keep raw
+                    String dV = dep.getVersion(); // keep raw
                     
-                    if ("import".equals(dScope) && "pom".equals(dep.getType())) {
-                        try {
-                            String iVer = resolveProperty(dep.getVersion());
-                            ArtifactDescriptor ad = new ArtifactDescriptor(dGid, dAid, iVer, "pom", null, "pom");
-                            File pomFile = resolver.getOrDownload(ad, "pom", null);
-                            if (pomFile != null && pomFile.exists()) {
-                                PomContext importCtx = resolver.loadPomContext(pomFile);
-                                // Merge managed versions from the imported context (recursively handled)
-                                mergeManagedVersions(importCtx);
-                                // Also resolve GID/AID of the imported POM itself and add to managed versions
-                                String rGid = importCtx.resolveProperty(importCtx.pom.getGroupId());
-                                String rAid = importCtx.resolveProperty(importCtx.pom.getArtifactId());
-                                String rVer = importCtx.resolveProperty(importCtx.pom.getVersion());
-                                managedVersions.put(rGid + ":" + rAid, rVer);
+                    if (dGid != null && dAid != null) {
+                        String key = dGid + ":" + dAid;
+                        if ("import".equals(resolveProperty(dScope)) && "pom".equals(dep.getType())) {
+                            try {
+                                String iVer = resolveProperty(dV);
+                                if (iVer == null) iVer = getManagedVersion(dGid, dAid);
+
+                                if (iVer != null) {
+                                    System.err.println("MIMIC: [IMPORT ] " + dGid + ":" + dAid + ":" + iVer + " in " + pom.getArtifactId());
+                                    ArtifactDescriptor ad = new ArtifactDescriptor(dGid, dAid, iVer, "import", null, "pom");
+                                    File pomFile = resolver.getOrDownload(ad, "pom", null);
+                                    if (pomFile != null && pomFile.exists()) {
+                                        PomContext importCtx = resolver.loadPomContext(pomFile, this.properties);
+                                        mergeManaged(importCtx);
+                                    }
+                                }
+                            } catch (Exception e) {}
+                        } else {
+                            if (dV != null) {
+                                if (resolver.isDebugMatch(dGid, dAid)) {
+                                    System.err.println("MIMIC: [MGNTDEF] " + key + ":" + dV + " (scope=" + dScope + ") in " + pom.getArtifactId());
+                                }
+                                managedVersions.put(key, dV);
+                                if (dScope != null) {
+                                    if (resolver.isDebugMatch(dGid, dAid)) {
+                                        System.err.println("MIMIC: [MGNTSET] " + key + " scope=" + dScope + " in " + pom.getArtifactId());
+                                    }
+                                    managedScopes.put(key, dScope);
+                                }
                             }
-                        } catch (Exception e) {
-                            // ignore import errors
-                        }
-                    } else {
-                        managedVersions.put(dGid + ":" + dAid, resolveProperty(dep.getVersion()));
-                        if (dScope != null) {
-                            managedScopes.put(dGid + ":" + dAid, dScope);
                         }
                     }
                 }
             }
         }
 
-        private void mergeManagedVersions(PomContext other) {
-            if (other.parent != null) mergeManagedVersions(other.parent);
-            managedVersions.putAll(other.managedVersions);
-            managedScopes.putAll(other.managedScopes);
+        List<PomModel.Dependency> getEffectiveDependencies() {
+            List<PomModel.Dependency> allDeps = new ArrayList<>();
+            // Maven behavior: dependencies are NOT inherited from parents in the same way managed ones are?
+            // Actually, they ARE inherited.
+            if (parent != null) allDeps.addAll(parent.getEffectiveDependencies());
+            if (pom.getDependencies() != null && pom.getDependencies().getDependencyList() != null) {
+                allDeps.addAll(pom.getDependencies().getDependencyList());
+            }
+            return allDeps;
+        }
+
+        private void mergeManaged(PomContext other) {
+            for (Map.Entry<String, String> entry : other.managedVersions.entrySet()) {
+                String val = other.resolveProperty(entry.getValue());
+                if (resolver.isDebugMatch(entry.getKey(), "")) {
+                    System.err.println("MIMIC: [MGNT-MERGE] " + entry.getKey() + " " + entry.getValue() + " -> " + val + " from " + other.pom.getArtifactId() + " into " + pom.getArtifactId());
+                }
+                managedVersions.putIfAbsent(entry.getKey(), val);
+            }
+            for (Map.Entry<String, String> entry : other.managedScopes.entrySet()) {
+                String val = other.resolveProperty(entry.getValue());
+                managedScopes.putIfAbsent(entry.getKey(), val);
+            }
         }
 
         String getManagedVersion(String gid, String aid) {
-            String v = managedVersions.get(resolveProperty(gid) + ":" + resolveProperty(aid));
-            if (v == null && parent != null) return parent.getManagedVersion(gid, aid);
-            return resolveProperty(v);
+            String key = gid + ":" + aid;
+            String v = managedVersions.get(key);
+            if (v == null && parent != null) v = parent.getManagedVersion(gid, aid);
+            String resolved = resolveProperty(v);
+            if (resolver.isDebugMatch(gid, aid)) {
+                 System.err.println("MIMIC: [MGNT-GET] " + key + " v=" + v + " resolved=" + resolved + " in " + pom.getArtifactId());
+            }
+            return resolved;
         }
 
         String getManagedScope(String gid, String aid) {
-            String s = managedScopes.get(resolveProperty(gid) + ":" + resolveProperty(aid));
-            if (s == null && parent != null) return parent.getManagedScope(gid, aid);
-            return resolveProperty(s);
+            String key = gid + ":" + aid;
+            String s = managedScopes.get(key);
+            if (s == null && parent != null) s = parent.getManagedScope(gid, aid);
+            String resolved = resolveProperty(s);
+            if (resolver.isDebugMatch(gid, aid)) {
+                System.err.println("MIMIC: [MGNT-GET] " + gid + ":" + aid + " s=" + s + " resolved=" + resolved + " in " + pom.getArtifactId());
+            }
+            return resolved;
         }
 
-        String resolveProperty(String value) {
-            if (value == null || !value.contains("${")) return value;
-            String result = value;
-            int start;
-            while ((start = result.indexOf("${")) != -1) {
-                int end = result.indexOf("}", start);
-                if (end == -1) break;
-                String propName = result.substring(start + 2, end);
-                String propValue = getPropertyValue(propName);
-                if (propValue != null) {
-                    result = result.substring(0, start) + propValue + result.substring(end + 1);
-                } else {
-                    break; // stop if can't resolve
+        public String resolveProperty(String val) {
+            if (val == null || !val.contains("${")) return val;
+            String result = val;
+            
+            // Loop for recursive resolution
+            for(int i=0; i<8; i++) {
+                boolean changed = false;
+                for (Map.Entry<String, String> entry : properties.entrySet()) {
+                    if (entry.getValue() != null) {
+                        String needle = "${" + entry.getKey() + "}";
+                        if (result.contains(needle)) {
+                            result = result.replace(needle, entry.getValue());
+                            changed = true;
+                        }
+                    }
+                }
+                if (!changed || !result.contains("${")) break;
+            }
+            if (result.contains("${")) {
+                // System.err.println("MIMIC: [PROP-FAIL] " + val + " -> " + result + " in context " + pom.getArtifactId());
+            } else if (!val.equals(result)) {
+                if (resolver.isDebugMatch(val, "")) {
+                    System.err.println("MIMIC: [PROP-RESOLVE] " + val + " -> " + result + " in context " + pom.getArtifactId());
                 }
             }
             return result;
         }
+    }
 
-        private String getPropertyValue(String name) {
-            String valStr = null;
-            if ("project.version".equals(name) || "version".equals(name)) valStr = pom.getVersion();
-            else if ("project.groupId".equals(name) || "groupId".equals(name)) valStr = pom.getGroupId();
-            else if ("project.artifactId".equals(name) || "artifactId".equals(name)) valStr = pom.getArtifactId();
-            else if ("project.parent.version".equals(name)) valStr = pom.getParent() != null ? pom.getParent().getVersion() : null;
-            else {
-                Object val = pom.getProperties().get(name);
-                if (val != null) valStr = PomModel.extractText(val);
-                else {
-                    if (parent != null) valStr = parent.getPropertyValue(name);
+    private String resolveVersionRange(ArtifactDescriptor ad) {
+        String version = ad.version();
+        if (version == null) return null;
+        if (!version.startsWith("[") && !version.startsWith("(")) return version;
+
+        // Extract base version for matching (simplified range parsing)
+        String v = version.substring(1);
+        int comma = v.indexOf(',');
+        boolean upperIncluded = version.endsWith("]");
+        String upperV = null;
+        if (comma != -1) {
+            upperV = v.substring(comma + 1);
+            if (upperV.endsWith(")") || upperV.endsWith("]")) upperV = upperV.substring(0, upperV.length() - 1).trim();
+            v = v.substring(0, comma).trim();
+        } else {
+            if (v.endsWith(")") || v.endsWith("]")) v = v.substring(0, v.length() - 1).trim();
+        }
+
+        File versionDir = new File(localRepo, ad.groupId().replace('.', '/') + "/" + ad.artifactId());
+        if (versionDir.exists()) {
+            File[] versions = versionDir.listFiles(File::isDirectory);
+            if (versions != null) {
+                // Sort descending so the highest matching version is first
+                // We should use a proper version comparator if possible, but alphabetically works for most cases
+                List<String> sortedVersions = new ArrayList<>();
+                for (File vf : versions) sortedVersions.add(vf.getName());
+                sortedVersions.sort((s1, s2) -> compareVersions(s2, s1)); // Descending
+
+                for (String vName : sortedVersions) {
+                    if (isVersionInRange(vName, version)) return vName;
                 }
             }
-            
-            if (valStr == null) {
-                valStr = System.getProperty(name);
-                if (valStr == null) valStr = System.getenv(name);
-            }
-            // if (valStr != null) System.out.println("Property " + name + " -> " + valStr + " (in " + pom.getArtifactId() + ")");
-            return valStr;
         }
+        return v.isEmpty() ? version : v; // fallback to base version or original
+    }
+
+    private boolean isVersionInRange(String vName, String range) {
+        // Very simplified range matching for common cases like [3.0, 4.0)
+        String r = range.substring(1, range.length() - 1);
+        String[] parts = r.split(",");
+        if (parts.length == 1) {
+            return vName.equals(parts[0].trim());
+        }
+        String lower = parts[0].trim();
+        String upper = parts[1].trim();
+        boolean lowerIncl = range.startsWith("[");
+        boolean upperIncl = range.endsWith("]");
+
+        boolean match = true;
+        if (!lower.isEmpty()) {
+            int cmp = compareVersions(vName, lower);
+            if (lowerIncl) match = cmp >= 0;
+            else match = cmp > 0;
+        }
+        if (match && !upper.isEmpty()) {
+            int cmp = compareVersions(vName, upper);
+            if (upperIncl) match = match && cmp <= 0;
+            else match = match && cmp < 0;
+        }
+        return match;
+    }
+
+    private int compareVersions(String v1, String v2) {
+        String[] p1 = v1.split("[\\.\\-]");
+        String[] p2 = v2.split("[\\.\\-]");
+        int len = Math.max(p1.length, p2.length);
+        for (int i = 0; i < len; i++) {
+            String s1 = i < p1.length ? p1[i] : "0";
+            String s2 = i < p2.length ? p2[i] : "0";
+            try {
+                int n1 = Integer.parseInt(s1);
+                int n2 = Integer.parseInt(s2);
+                if (n1 != n2) return Integer.compare(n1, n2);
+            } catch (NumberFormatException e) {
+                int res = s1.compareTo(s2);
+                if (res != 0) return res;
+            }
+        }
+        return 0;
     }
 
     private File getOrDownload(ArtifactDescriptor ad, String extension, File pomFile) throws IOException {
-        // try reactor first
+        String version = ad.version();
+        if (version != null && (version.startsWith("[") || version.startsWith("("))) {
+            String bestV = resolveVersionRange(ad);
+            if (bestV != null) {
+                ad = new ArtifactDescriptor(ad.groupId(), ad.artifactId(), bestV, ad.scope(), ad.classifier(), ad.type());
+            }
+        }
+
         if ("pom".equals(extension)) {
             File f = reactorPomMap.get(ad.groupId() + ":" + ad.artifactId());
             if (f != null) return f;
@@ -469,36 +763,22 @@ public class MimicDependencyResolver implements DependencyResolver {
         for (File reactor : reactorPaths) {
             File f = new File(reactor, ad.artifactId() + "-" + ad.version() + "." + (extension == null ? "jar" : extension));
             if (f.exists()) return f;
-            // check in target too (though scanReactor handles poms)
             f = new File(reactor, ad.artifactId() + "/target/" + ad.artifactId() + "-" + ad.version() + "." + (extension == null ? "jar" : extension));
             if (f.exists()) return f;
         }
 
         File file = getArtifactFile(ad, extension);
-        if (!file.exists()) {
-            downloadFromRepos(ad, extension, file);
-        }
+        if (!file.exists()) downloadFromRepos(ad, extension, file);
         return file;
     }
 
     private File getArtifactFile(ArtifactDescriptor ad, String extension) {
-        String path = ad.groupId().replace('.', File.separatorChar) + File.separator +
-                ad.artifactId() + File.separator +
-                ad.version() + File.separator +
-                ad.artifactId() + "-" + ad.version() + 
-                (ad.classifier() != null && !ad.classifier().isEmpty() ? "-" + ad.classifier() : "") +
-                "." + (extension == null ? "jar" : extension);
+        String path = ad.groupId().replace('.', File.separatorChar) + File.separator + ad.artifactId() + File.separator + ad.version() + File.separator + ad.artifactId() + "-" + ad.version() + (ad.classifier() != null && !ad.classifier().isEmpty() ? "-" + ad.classifier() : "") + "." + (extension == null ? "jar" : extension);
         return new File(localRepo, path);
     }
 
     private void downloadFromRepos(ArtifactDescriptor ad, String extension, File target) throws IOException {
-        String relPath = ad.groupId().replace('.', '/') + "/" +
-                ad.artifactId() + "/" +
-                ad.version() + "/" +
-                ad.artifactId() + "-" + ad.version() + 
-                (ad.classifier() != null && !ad.classifier().isEmpty() ? "-" + ad.classifier() : "") +
-                "." + (extension == null ? "jar" : extension);
-        
+        String relPath = ad.groupId().replace('.', '/') + "/" + ad.artifactId() + "/" + ad.version() + "/" + ad.artifactId() + "-" + ad.version() + (ad.classifier() != null && !ad.classifier().isEmpty() ? "-" + ad.classifier() : "") + "." + (extension == null ? "jar" : extension);
         for (String repoUrl : repoUrls) {
             String urlStr = repoUrl + relPath;
             try {
@@ -508,17 +788,10 @@ public class MimicDependencyResolver implements DependencyResolver {
                 conn.setReadTimeout(5000);
                 if (conn.getResponseCode() == 200) {
                     target.getParentFile().mkdirs();
-                    try (InputStream is = conn.getInputStream();
-                         FileOutputStream fos = new FileOutputStream(target)) {
-                        is.transferTo(fos);
-                    }
-                    System.out.println("Downloaded: " + urlStr + " to " + target.getAbsolutePath());
-                    return; // Success
+                    try (InputStream is = conn.getInputStream(); FileOutputStream fos = new FileOutputStream(target)) { is.transferTo(fos); }
+                    return;
                 }
-            } catch (Exception e) {
-                // ignore and try next repo
-            }
+            } catch (Exception e) {}
         }
     }
-
 }
