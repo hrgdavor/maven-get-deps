@@ -36,8 +36,9 @@ function parseCli(filename) {
                 continue;
             }
             if (startCollecting && line) {
-                // CLI format:   groupId:artifactId:type:version:scope
-                deps.add(line);
+                // CLI format:   groupId:artifactId:type:version:scope (path)
+                const depPart = line.split(' (')[0].trim();
+                deps.add(depPart);
             }
         }
     } catch (e) {

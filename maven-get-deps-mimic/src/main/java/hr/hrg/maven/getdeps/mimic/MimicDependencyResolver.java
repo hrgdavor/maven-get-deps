@@ -214,16 +214,24 @@ public class MimicDependencyResolver implements DependencyResolver {
                             
                             if (oldDepth <= nextDepth) {
                                 // Scope promotion
-                                if (oldAd != null && scopeStrength(s) > scopeStrength(oldAd.scope())) {
+                                boolean shouldPromote = scopeStrength(s) > scopeStrength(oldAd.scope());
+                                // Nuance: do not promote root 'provided' dependencies to 'compile/runtime' if it was explicitly defined as provided
+                                if (oldDepth == 0 && "provided".equals(oldAd.scope()) && ("compile".equals(s) || "runtime".equals(s))) {
+                                    shouldPromote = false;
+                                }
+
+                                if (oldAd != null && shouldPromote) {
                                     ArtifactDescriptor promoted = new ArtifactDescriptor(oldAd.groupId(), oldAd.artifactId(), oldAd.version(), s, oldAd.classifier(), oldAd.type(), oldAd.path());
                                     resolved.put(gaTrans, promoted);
-                                    if (isDebugMatch(dGid, dAid) || gaTrans.contains("inject") || gaTrans.contains("xml.bind")) {
+                                    if (isDebugMatch(dGid, dAid)) {
                                         System.err.println("MIMIC: [SCOPE-PROMOTE] " + gaTrans + " from " + oldAd.scope() + " to " + s + " at depth " + nextDepth + " via " + ad.groupId() + ":" + ad.artifactId());
                                     }
                                 }
 
                                 if (oldDepth < nextDepth) {
-                                    alreadyHaveBetter = true;
+                                    if (!oldIsOpt) {
+                                        alreadyHaveBetter = true;
+                                    }
                                 } else if (oldDepth == nextDepth) {
                                     if (!(oldIsOpt && !currentIsOpt)) {
                                         alreadyHaveBetter = true;
@@ -286,6 +294,13 @@ public class MimicDependencyResolver implements DependencyResolver {
 
         for (ArtifactDescriptor adResolved : resolved.values()) {
             String ga = adResolved.groupId() + ":" + adResolved.artifactId();
+            // Nuance 30: Reactor Module Exclusion
+            if (reactorPomMap.containsKey(ga)) {
+                if (isDebugMatch(adResolved.groupId(), adResolved.artifactId())) {
+                    System.err.println("MIMIC: [REACTOR-SKIP] " + ga);
+                }
+                continue;
+            }
             if (effectiveScopes.contains(adResolved.scope()) && !resolvedOptionals.contains(ga)) {
                 resultList.add(adResolved);
             }
@@ -337,7 +352,7 @@ public class MimicDependencyResolver implements DependencyResolver {
                     String ga = dGid + ":" + dAid;
                     String dType = dep.getType();
                     if (dType == null) dType = "jar";
-                    ArtifactDescriptor ad = new ArtifactDescriptor(dGid, dAid, v, s, dep.getClassifier(), dType);
+                    ArtifactDescriptor ad = new ArtifactDescriptor(dGid, dAid, v, s, dep.getClassifier(), dType, ga);
                     
                     // Register EVERYTHING at depth 0 to ensure "Nearest Wins" for test/provided scopes too!
                     resolvedDepths.put(ga, 0);
@@ -348,7 +363,7 @@ public class MimicDependencyResolver implements DependencyResolver {
                         if (isDebugMatch(dGid, dAid)) System.err.println("MIMIC: [OPT-ROOT] " + ga);
                     }
 
-                    if (effectiveScopes.contains(s) && !"test".equals(s) && !"provided".equals(s) && !isOpt) {
+                    if (effectiveScopes.contains(s) && !isOpt) {
                         Set<String> exclusions = new HashSet<>();
                         if (dep.getExclusions() != null) {
                             for (PomModel.Exclusion ex : dep.getExclusions().getExclusionList()) {
@@ -751,8 +766,14 @@ public class MimicDependencyResolver implements DependencyResolver {
         if (version != null && (version.startsWith("[") || version.startsWith("("))) {
             String bestV = resolveVersionRange(ad);
             if (bestV != null) {
-                ad = new ArtifactDescriptor(ad.groupId(), ad.artifactId(), bestV, ad.scope(), ad.classifier(), ad.type());
+                ad = new ArtifactDescriptor(ad.groupId(), ad.artifactId(), bestV, ad.scope(), ad.classifier(), ad.type(), ad.path());
             }
+        }
+
+        // Nuance: Map test-jar type to classifier=tests and extension=jar
+        if ("test-jar".equals(ad.type())) {
+            ad = new ArtifactDescriptor(ad.groupId(), ad.artifactId(), ad.version(), ad.scope(), "tests", "jar", ad.path());
+            extension = "jar";
         }
 
         if ("pom".equals(extension)) {

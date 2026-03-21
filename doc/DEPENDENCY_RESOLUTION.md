@@ -86,6 +86,7 @@ Matching Maven 100% requires robust comparison tools.
 **Solution:** 
 - Use an `--extended` output flag in the CLI to produce `groupId:artifactId:type:version:scope` format.
 - Use a verification script (e.g., in Bun/JS) that strips ANSI codes and sorts results before performing a set-based comparison.
+- **Nuance:** When using `--extended` mode in the CLI, the output includes resolution paths in parentheses (e.g., `g:a:t:v:s (path -> path)`). The comparison script must strip these parentheses to match Maven's raw `g:a:t:v:s` format.
 - Implement a generic tracing architecture (e.g., `--debug-match` flag) allowing dynamic tracking of specific GroupIDs/ArtifactIDs through the BFS tree to analyze scope drops or version overrides without relying on hardcoded debug traces.
 
 ### 11. Property Precedence and Shadowing
@@ -123,8 +124,13 @@ Matching Maven 100% requires robust comparison tools.
 ## Verification
 Parity is verified by comparing against `mvnd dependency:list -Dscope=runtime`.
 - **Target:** 183 artifacts (for `fgks-core-back` runtime scope).
-- **Mimic Status:** 
+- **Mimic Status:**
   - **100% parity achieved!** The mimic now outputs exactly the same 183 artifacts with matching versions and scopes.
+  - **Complex1/Core Project**: 100% parity achieved.
+    - Verified match against provided `dependencies.txt` (183 artifacts).
+    - Correctly handled `bugsnag-spring` version range (`3.8.0`).
+    - Correctly applied root `dependencyManagement` for `log4j-api` (2.25.3) and `commons-lang3` (3.18.0).
+    - `jakarta.websocket-api` correctly excluded in `runtime` scope (direct `provided` dependency).
   - Logback matched exactly (`1.5.11`).
   - AWS SDK transition tree fully matched (20+ artifacts).
   - Bugsnag range correctly resolved (`3.8.0`).
@@ -218,3 +224,32 @@ Similar to versions, `dependencyManagement` can provide a default scope if it's 
 - **Problem:** If we create a completely new `ArtifactDescriptor` during promotion, we might lose the original path string (e.g., `hibernate-core -> jakarta.inject-api`), replacing it with the path of the deeper promotion source.
 - **Solution:** When performing scope promotion, ensure the `ArtifactDescriptor` is updated only for the `scope` field, while copying the `path` field from the EXISTING descriptor.
 - **Implementation:** `ArtifactDescriptor promoted = new ArtifactDescriptor(oldAd.groupId(), ..., s, ..., oldAd.path());`
+
+### 35. Optional vs. Required Intersection (Deeper Wins)
+**Discovery:** In addition to "Nearest Wins" for versions, optionality follows a specific rule. If an artifact is encountered as `optional` at a shallower depth, it should NOT block a `required` encounter at a deeper level.
+- **Bug Fixed:** The mimic was blocking `log4j-api` because it first saw it as optional via `netty-common`, skipping its required encounter via `spring-boot-starter-logging`.
+- **Solution:** Refined the BFS guard: `if (oldDepth < nextDepth && !oldIsOpt) continue;`. If the shallower encounter was optional, allow the deeper required one to proceed.
+
+### 36. Root Provided Scope Protection
+Discovery: Direct dependencies defined in the root POM with provided scope should NOT be promoted to compile or runtime through transitive encounters, as this would incorrectly include them in the final artifact listing.
+- Problem: jakarta.websocket-api was being promoted from provided to compile due to a deeper encounter via Jetty, leading to its inclusion in the compile,runtime resolve list.
+- Solution: In the scope promotion logic, add a check to prevent promotion if the existing dependency is at depth 0 and has provided scope.
+
+### 37. Reactor Module Exclusion (Refined)
+**Discovery:** In multi-module projects, sibling modules (reactor modules) are used to resolve transitive paths but must be excluded from the final output list of dependencies.
+- **Problem:** Siblings like `org.complex1:core` were appearing in the final result list of the `back` project.
+- **Solution:** Filter the final result list using the `reactorPomMap` to exclude any artifact that belongs to the current reactor.
+
+### 38. Provided/Test Root Expansion
+**Discovery:** Direct `provided` and `test` dependencies must be expanded into the BFS tree if they are part of the requested target scopes.
+- **Problem:** The mimic was hard-skipping `provided` and `test` dependencies at depth 0, meaning their transitive dependencies were never explored.
+- **Solution:** Allow all root dependencies to be added to the BFS queue if their scope is in the `effectiveScopes` list.
+
+### 39. Test-Jar Type Mapping
+**Discovery:** The Maven dependency type `test-jar` does not map directly to a file extension of the same name.
+- **Solution:** Explicitly map `type="test-jar"` to `extension="jar"` and `classifier="tests"` during the artifact resolution process.
+
+### 40. Root Path Traceability
+**Discovery:** For consistent reporting in extended mode (`-E`), root dependencies should report their own `groupId:artifactId` as their resolution path.
+- **Problem:** Root dependencies were reporting `(null)` in the extended output.
+- **Solution:** Set the `path` field of the `ArtifactDescriptor` to the G:A string during root node initialization.
