@@ -92,6 +92,12 @@
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ResourceBundleAppendingTransformer">
                                     <basename>org.owasp.dependencycheck.data.nvdcve.DatabaseManager</basename>
                                 </transformer>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
+                                    <resource>dependencycheck.properties</resource>
+                                </transformer>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
+                                    <resource>org/owasp/dependencycheck/utils/dependencycheck.properties</resource>
+                                </transformer>
                             </transformers>
                         </configuration>
                     </execution>

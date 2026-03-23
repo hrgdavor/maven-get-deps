@@ -18,3 +18,12 @@ build
 test_deps.txt
 .well-known
 deprecated-src
+.flattened-pom.xml
+dependency-reduced-pom.xml
+mimic_core_debug*.log
+benchmark_*.txt
+java_mimic.txt
+java_output.txt
+zig_mimic.txt
+current.tmp
+fresh_maven_baseline.txt

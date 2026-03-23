@@ -7,7 +7,7 @@
     <parent>
         <groupId>hr.hrg</groupId>
         <artifactId>maven-get-deps-parent</artifactId>
-        <version>1.0.1</version>
+        <version>${revision}</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 

@@ -46,6 +46,19 @@ schtasks /create /tn "CVE DB Update" /tr "java -jar C:\tools\cve12.jar --update"
 | `--key` | `-k` | [Optional] API key for higher rate limits. |
 | `--nd` | `-nd` | [Optional] Delay in milliseconds between NVD API requests. |
 | `--data` | `-d` | Path to the directory for the H2 database. |
+| `--kevUrl` | `-ku` | [Optional] Custom URL for the KEV JSON feed (bypasses 403 errors). |
+
+### Troubleshooting Updates
+
+#### CISA KEV 403 Forbidden
+The CISA KEV feed often returns a **403 Forbidden** error in restricted network environments or Jenkins servers. 
+- **Graceful Failure**: The tool now handles this as a warning and continues the update (NVD data is still synchronized).
+- **Custom URL**: Use `--kevUrl` to point to a mirror or a local file (e.g., `--kevUrl file:///tmp/kev.json`).
+- **Disabled by default**: If no URL is provided, the KEV analyzer is disabled to ensure a smooth out-of-the-box experience.
+
+#### Database Corruption
+If an initial sync is interrupted, the H2 database can become corrupted (e.g., `JdbcSQLSyntaxErrorException`). 
+- **Automatic Reset**: `cve12` now detects these errors and automatically clears the corrupted database files before retrying the initialization once.
 
 ---
 

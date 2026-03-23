@@ -60,18 +60,15 @@ pub const PomModel = struct {
                     
                     if (std.mem.eql(u8, name, "dependency")) {
                         const is_managed = isInside(path, "dependencyManagement");
-                        const in_deps = isInside(path, "dependencies");
-                        const in_plugin = isInside(path, "plugin") or isInside(path, "plugins");
-
-                        if (in_deps and !in_plugin) {
-                            const dep = try parseDependency(allocator, &scanner, name);
+                        const is_plugin = isInside(path, "plugin") or isInside(path, "plugins");
+                        
+                        const dep = try parseDependency(allocator, &scanner, name);
+                        if (!is_plugin) {
                             if (is_managed) {
                                 try m_deps.append(allocator, dep);
                             } else {
                                 try deps.append(allocator, dep);
                             }
-                        } else {
-                            try skipTag(&scanner);
                         }
                         _ = current_path.pop();
                     } else if (std.mem.eql(u8, name, "parent")) {
@@ -80,19 +77,34 @@ pub const PomModel = struct {
                     } else if (std.mem.eql(u8, name, "repository")) {
                         try repos.append(allocator, try parseRepository(allocator, &scanner, name));
                         _ = current_path.pop();
+                    } else if (std.mem.eql(u8, name, "properties") or std.mem.eql(u8, name, "dependencies") 
+                               or std.mem.eql(u8, name, "dependencyManagement") or std.mem.eql(u8, name, "project")
+                               or std.mem.eql(u8, name, "groupId") or std.mem.eql(u8, name, "artifactId") or std.mem.eql(u8, name, "version")
+                               or std.mem.eql(u8, name, "modules") or std.mem.eql(u8, name, "module") or std.mem.eql(u8, name, "name") or std.mem.eql(u8, name, "packaging") or std.mem.eql(u8, name, "modelVersion") or std.mem.eql(u8, name, "build") or std.mem.eql(u8, name, "plugins") or std.mem.eql(u8, name, "plugin") or std.mem.eql(u8, name, "configuration") or std.mem.eql(u8, name, "relativePath") or std.mem.eql(u8, name, "exclusions")) {
+                        // Keep on path, will be popped by tag_close
+                    } else if (path.len >= 3 and std.mem.eql(u8, path[path.len-2], "properties")) {
+                         // Individual property tag - keep on path
+                    } else {
+                        // Unknown tag - skip it and pop from path
+                        try skipTag(&scanner);
+                        _ = current_path.pop();
                     }
                 },
                 .tag_close => |_| {
                     if (current_path.items.len > 0) _ = current_path.pop();
                 },
                 .text => |val| {
+                    const val_trimmed = std.mem.trim(u8, val, " \t\r\n");
+                    if (val_trimmed.len == 0) continue;
                     const path = current_path.items;
                     if (path.len == 2 and std.mem.eql(u8, path[0], "project")) {
-                        if (std.mem.eql(u8, path[1], "groupId")) model.group_id = val;
-                        if (std.mem.eql(u8, path[1], "artifactId")) model.artifact_id = val;
-                        if (std.mem.eql(u8, path[1], "version")) model.version = val;
-                    } else if (path.len == 3 and std.mem.eql(u8, path[0], "project") and std.mem.eql(u8, path[1], "properties")) {
-                        try model.properties.put(path[2], val);
+                        if (std.mem.eql(u8, path[1], "groupId")) model.group_id = try allocator.dupe(u8, val_trimmed);
+                        if (std.mem.eql(u8, path[1], "artifactId")) model.artifact_id = try allocator.dupe(u8, val_trimmed);
+                        if (std.mem.eql(u8, path[1], "version")) model.version = try allocator.dupe(u8, val_trimmed);
+                    } else if (path.len >= 3 and std.mem.eql(u8, path[path.len-2], "properties")) {
+                        const prop_name = path[path.len-1];
+                        try model.properties.put(try allocator.dupe(u8, prop_name), try allocator.dupe(u8, val_trimmed));
+                        // std.debug.print("DEBUG: [POM-PROP] {s}={s}\n", .{ prop_name, val_trimmed });
                     }
                 },
             }
@@ -101,13 +113,24 @@ pub const PomModel = struct {
         model.dependencies = try deps.toOwnedSlice(allocator);
         model.dependency_management = try m_deps.toOwnedSlice(allocator);
         model.repositories = try repos.toOwnedSlice(allocator);
-
+        // // std.debug.print("DEBUG: Parsed model {s}: deps={} m_deps={} repos={}\n", .{ model.artifact_id orelse "unknown", model.dependencies.len, model.dependency_management.len, model.repositories.len });
         return model;
     }
 
     fn isInside(path: []const []const u8, name: []const u8) bool {
-        for (path) |p| {
-            if (std.mem.eql(u8, p, name)) return true;
+        if (path.len < 2) return false;
+        // Project dependencies are project/dependencies/dependency (len 3, [1] == "dependencies")
+        // or project/profiles/profile/dependencies/dependency (len 5, [3] == "dependencies")
+        // Managed are project/dependencyManagement/dependencies/dependency (len 4, [1] == "dependencyManagement")
+        
+        for (path, 0..) |p, i| {
+            if (std.mem.eql(u8, p, name)) {
+                // Check if we are inside build/plugins/plugin
+                for (path[0..i]) |prev| {
+                    if (std.mem.eql(u8, prev, "plugins")) return false;
+                }
+                return true;
+            }
         }
         return false;
     }
@@ -118,30 +141,37 @@ pub const PomModel = struct {
 
         while (true) {
             const token = try scanner.next();
+            // // std.debug.print("DEBUG: parseDependency TOKEN: {}\n", .{ token });
             switch (token) {
                 .tag_open => |name| {
+                    // std.debug.print("DEBUG: parseDependency OPEN: {s}\n", .{ name });
                     if (std.mem.eql(u8, name, "groupId")) {
-                        dep.group_id = try nextText(scanner);
+                        dep.group_id = try allocator.dupe(u8, try nextText(scanner));
                     } else if (std.mem.eql(u8, name, "artifactId")) {
-                        dep.artifact_id = try nextText(scanner);
+                        dep.artifact_id = try allocator.dupe(u8, try nextText(scanner));
                     } else if (std.mem.eql(u8, name, "version")) {
-                        dep.version = try nextText(scanner);
+                        dep.version = try allocator.dupe(u8, try nextText(scanner));
                     } else if (std.mem.eql(u8, name, "scope")) {
-                        dep.scope = try nextText(scanner);
+                        dep.scope = try allocator.dupe(u8, try nextText(scanner));
                     } else if (std.mem.eql(u8, name, "type")) {
-                        dep.type = try nextText(scanner);
+                        dep.type = try allocator.dupe(u8, try nextText(scanner));
                     } else if (std.mem.eql(u8, name, "classifier")) {
-                        dep.classifier = try nextText(scanner);
+                        dep.classifier = try allocator.dupe(u8, try nextText(scanner));
                     } else if (std.mem.eql(u8, name, "optional")) {
                         const opt = try nextText(scanner);
                         dep.optional = std.mem.eql(u8, opt, "true");
                     } else if (std.mem.eql(u8, name, "relativePath")) {
-                        dep.relative_path = try nextText(scanner);
+                        dep.relative_path = try allocator.dupe(u8, try nextText(scanner));
+                    } else if (std.mem.eql(u8, name, "exclusions")) {
+                        // the next tags will be 'exclusion'
                     } else if (std.mem.eql(u8, name, "exclusion")) {
-                        try exclusions.append(allocator, try parseExclusion(scanner));
+                        try exclusions.append(allocator, try parseExclusion(allocator, scanner));
                     } else {
                         try skipTag(scanner);
                     }
+                    // if (std.mem.eql(u8, name, "version")) {
+                    //     // std.debug.print("DEBUG: parseDependency version: {s} for {s}\n", .{ if (dep.version) |v| v else "null", if (dep.artifact_id) |ai| ai else "unknown" });
+                    // }
                 },
                 .tag_close => |name| {
                     if (std.mem.eql(u8, name, end_tag)) break;
@@ -153,16 +183,16 @@ pub const PomModel = struct {
         return dep;
     }
 
-    fn parseExclusion(scanner: *xml.Scanner) !Exclusion {
+    fn parseExclusion(allocator: std.mem.Allocator, scanner: *xml.Scanner) !Exclusion {
         var exc = Exclusion{};
         while (true) {
             const token = try scanner.next();
             switch (token) {
                 .tag_open => |name| {
                     if (std.mem.eql(u8, name, "groupId")) {
-                        exc.group_id = try nextText(scanner);
+                        exc.group_id = try allocator.dupe(u8, try nextText(scanner));
                     } else if (std.mem.eql(u8, name, "artifactId")) {
-                        exc.artifact_id = try nextText(scanner);
+                        exc.artifact_id = try allocator.dupe(u8, try nextText(scanner));
                     } else {
                         try skipTag(scanner);
                     }
@@ -183,9 +213,9 @@ pub const PomModel = struct {
             switch (token) {
                 .tag_open => |name| {
                     if (std.mem.eql(u8, name, "id")) {
-                        repo.id = try nextText(scanner);
+                        repo.id = try allocator.dupe(u8, try nextText(scanner));
                     } else if (std.mem.eql(u8, name, "url")) {
-                        repo.url = try nextText(scanner);
+                        repo.url = try allocator.dupe(u8, try nextText(scanner));
                     } else {
                         try skipTag(scanner);
                     }
@@ -196,7 +226,6 @@ pub const PomModel = struct {
                 else => {},
             }
         }
-        _ = allocator;
         return repo;
     }
 

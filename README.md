@@ -43,8 +43,9 @@ Built for deep analysis and Maven ecosystem integration.
     - **Copy dependencies** to a separate folder.
     - Local Maven cache filling (downloading missing artifacts).
 - **gradle plugin** [link](doc/gradle.plugin.md) | lightweight Gradle equivalent with `--extra-classpath` support.
-- **cve12** (Focused CLI)
+- **cve12** (Focused CLI) [link](doc/README.usage-cve.md)
     - Vulnerability database download **OWASP Dependency-Check v12**.
+    - **Automatic database reset** & **custom KEV feed** support.
     - Standalone tool removed from core to reduce bloat and conflicts.
 
 ### 2. Ultra-Fast Zig Utilities

@@ -53,7 +53,9 @@ pub const Scanner = struct {
                 }
                 const name = std.mem.trim(u8, self.input[start..self.pos], " \t\r\n");
                 if (self.pos < self.input.len) self.pos += 1; // skip >
-                return .{ .tag_close = name };
+                const t = Token{ .tag_close = name };
+                // std.debug.print("SCANNER: tag_close '{s}'\n", .{ name });
+                return t;
             } else {
                 const start = self.pos;
                 var in_attr: ?u8 = null;
@@ -92,17 +94,21 @@ pub const Scanner = struct {
                 if (self.pos < self.input.len) self.pos += 1; // skip >
                 
                 if (self_closing) {
-                    // std.debug.print("SCANNER: Self-closing tag identified: {s}\n", .{name});
+                    // // std.debug.print("SCANNER: Self-closing tag identified: {s}\n", .{name});
                     self.pending_close = name;
                 }
-                return .{ .tag_open = name };
+                const t = Token{ .tag_open = name };
+                // std.debug.print("SCANNER: tag_open '{s}'\n", .{ name });
+                return t;
             }
         } else {
             const start = self.pos;
             while (self.pos < self.input.len and self.input[self.pos] != '<') {
                 self.pos += 1;
             }
-            return .{ .text = std.mem.trim(u8, self.input[start..self.pos], " \t\r\n") };
+            const t = Token{ .text = std.mem.trim(u8, self.input[start .. self.pos], " \t\r\n") };
+            // std.debug.print("SCANNER: text '{s}'\n", .{ t.text });
+            return t;
         }
     }
 

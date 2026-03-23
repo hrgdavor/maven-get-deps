@@ -11,6 +11,7 @@ pub const DependencyFormatInfo = struct {
     version: ?[]const u8 = null,
     classifier: ?[]const u8 = null,
     extension: []const u8 = "jar",
+    scope: []const u8 = "compile",
     local_path: ?[]const u8 = null,
 
     pub fn isLocal(self: DependencyFormatInfo) bool {
@@ -19,18 +20,45 @@ pub const DependencyFormatInfo = struct {
 };
 
 pub fn parse(allocator: std.mem.Allocator, line: []const u8) !?DependencyFormatInfo {
-    const trimmed = std.mem.trim(u8, line, " \t\r\n");
+    var trimmed = std.mem.trim(u8, line, " \t\r\n");
     if (trimmed.len == 0 or trimmed[0] == '#') return null;
+
+    // Handle [INFO] prefix often found in Maven output
+    if (std.mem.startsWith(u8, trimmed, "[INFO]")) {
+        trimmed = std.mem.trimLeft(u8, trimmed["[INFO]".len..], " \t");
+    }
 
     if (std.mem.startsWith(u8, trimmed, "./") or std.mem.startsWith(u8, trimmed, ".\\")) {
         return DependencyFormatInfo{ .local_path = trimmed };
     }
 
-    if (std.mem.indexOfScalar(u8, trimmed, ':') != null) {
+    // A Maven dependency string has at least 2 colons (g:a:v)
+    // and usually doesn't contain "---" or spaces within the GAV parts.
+    if (std.mem.indexOf(u8, trimmed, "---") != null) return null;
+
+    var it_check = std.mem.splitScalar(u8, trimmed, ':');
+    var part_idx: usize = 0;
+    var total_colons: usize = 0;
+    while (it_check.next()) |part| {
+        const p = std.mem.trim(u8, part, " \t");
+        if (part_idx < 3 and std.mem.indexOfScalar(u8, p, ' ') != null) {
+            // Lenient space check: allow one space if it contains a dot
+            if (part_idx == 0 and std.mem.indexOfScalar(u8, p, '.') != null) {
+                // ok
+            } else {
+                return null;
+            }
+        }
+        part_idx += 1;
+    }
+    total_colons = if (part_idx > 0) part_idx - 1 else 0;
+
+    if (total_colons >= 2) {
         return try parseColonFormat(trimmed);
-    } else {
+    } else if (std.mem.indexOfScalar(u8, trimmed, '/') != null or std.mem.indexOfScalar(u8, trimmed, '\\') != null) {
         return try parsePathFormat(allocator, trimmed);
     }
+    return null;
 }
 
 fn parseColonFormat(line: []const u8) !DependencyFormatInfo {
@@ -44,17 +72,59 @@ fn parseColonFormat(line: []const u8) !DependencyFormatInfo {
     }
 
     var it = std.mem.splitScalar(u8, rest, ':');
-    const group_id_str = it.next() orelse return error.InvalidColonFormat;
-    const artifact_id_str = it.next() orelse return error.InvalidColonFormat;
-    const version_str = it.next() orelse return error.InvalidColonFormat;
-    const classifier_str = it.next();
+    var parts_buf: [8][]const u8 = undefined;
+    var count: usize = 0;
+    while (it.next()) |part| {
+        if (count < 8) {
+            parts_buf[count] = std.mem.trim(u8, part, " \t");
+            count += 1;
+        }
+    }
+
+    if (count > 0) {
+        // Remove trailing fluff from the last part (e.g. "-- module ...")
+        const last = parts_buf[count - 1];
+        if (std.mem.indexOfScalar(u8, last, ' ')) |space_idx| {
+            parts_buf[count - 1] = last[0..space_idx];
+        }
+    }
+
+    if (count < 3) return error.InvalidColonFormat;
+
+    const group_id = parts_buf[0];
+    const artifact_id = parts_buf[1];
+    var version: []const u8 = undefined;
+    var classifier: ?[]const u8 = null;
+    var scope: []const u8 = "compile";
+
+    // Maven dependency:list format is groupId:artifactId:type:[classifier:]version:scope
+    if (count == 3) {
+        // g:a:v
+        version = parts_buf[2];
+    } else if (count == 4) {
+        // g:a:v:c (for backward compatibility with existing tests)
+        version = parts_buf[2];
+        classifier = parts_buf[3];
+    } else if (count == 5) {
+        // g:a:t:v:s (dependency:list format)
+        extension = parts_buf[2];
+        version = parts_buf[3];
+        scope = parts_buf[4];
+    } else if (count >= 6) {
+        // g:a:t:c:v:s (dependency:list format with classifier)
+        extension = parts_buf[2];
+        classifier = parts_buf[3];
+        version = parts_buf[4];
+        scope = parts_buf[5];
+    }
 
     return DependencyFormatInfo{
-        .group_id = group_id_str,
-        .artifact_id = artifact_id_str,
-        .version = version_str,
-        .classifier = if (classifier_str != null and classifier_str.?.len > 0) classifier_str else null,
+        .group_id = group_id,
+        .artifact_id = artifact_id,
+        .version = version,
+        .classifier = if (classifier != null and classifier.?.len > 0) classifier else null,
         .extension = extension,
+        .scope = scope,
     };
 }
 
@@ -236,4 +306,73 @@ test "format converter test" {
         defer allocator.free(path);
         try testing.expectEqualStrings("org/example/my-lib/1.2.3/my-lib-1.2.3-jdk8.zip", path);
     }
+    {
+        // Test [INFO] prefix and dependency:list 5-part format
+        const info_opt = try parse(allocator, "[INFO]    org.apache.commons:commons-lang3:jar:3.12.0:compile");
+        const info = info_opt.?;
+        try testing.expectEqualStrings("org.apache.commons", info.group_id.?);
+        try testing.expectEqualStrings("commons-lang3", info.artifact_id.?);
+        try testing.expectEqualStrings("3.12.0", info.version.?);
+        try testing.expectEqualStrings("jar", info.extension);
+        try testing.expect(info.classifier == null);
+    }
+    {
+        // Test dependency:list 6-part format with classifier
+        const info_opt = try parse(allocator, "org.example:my-lib:jar:jdk8:1.2.3:compile");
+        const info = info_opt.?;
+        try testing.expectEqualStrings("org.example", info.group_id.?);
+        try testing.expectEqualStrings("my-lib", info.artifact_id.?);
+        try testing.expectEqualStrings("1.2.3", info.version.?);
+        try testing.expectEqualStrings("jar", info.extension);
+        try testing.expectEqualStrings("jdk8", info.classifier.?);
+    }
+    {
+        // Test descriptive line is skipped
+        const info_opt = try parse(allocator, "[INFO] --- dependency:3.6.0:list (default-cli) @ core ---");
+        try testing.expect(info_opt == null);
+    }
+}
+
+test "load complex1/core dependency-list.txt" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const file = try std.fs.cwd().openFile("test/deps/complex1/core/dependency-list.txt", .{ .mode = .read_only });
+    defer file.close();
+
+    const max_bytes = 10 * 1024 * 1024;
+    const file_content = try file.readToEndAlloc(allocator, max_bytes);
+    defer allocator.free(file_content);
+
+    var count: usize = 0;
+    var iter = std.mem.splitScalar(u8, file_content, '\n');
+    while (iter.next()) |line| {
+        const info = try parse(allocator, line);
+        if (info) |_| {
+            count += 1;
+        }
+    }
+    try testing.expectEqual(@as(usize, 183), count);
+}
+
+test "load complex1/core dependency-list-raw.txt" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const file = try std.fs.cwd().openFile("test/deps/complex1/core/dependency-list-raw.txt", .{ .mode = .read_only });
+    defer file.close();
+
+    const max_bytes = 10 * 1024 * 1024;
+    const file_content = try file.readToEndAlloc(allocator, max_bytes);
+    defer allocator.free(file_content);
+
+    var count: usize = 0;
+    var iter = std.mem.splitScalar(u8, file_content, '\n');
+    while (iter.next()) |line| {
+        const info = try parse(allocator, line);
+        if (info) |_| {
+            count += 1;
+        }
+    }
+    try testing.expectEqual(@as(usize, 212), count);
 }

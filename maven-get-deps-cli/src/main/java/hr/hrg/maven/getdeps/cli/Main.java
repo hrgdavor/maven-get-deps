@@ -20,9 +20,10 @@ public class Main {
         options.addOption("p", "pom", true, "Path to pom.xml");
         options.addOption("s", "scopes", true, "Comma-separated list of scopes");
         options.addOption("r", "reactor", true, "Reactor path for sibling modules (Mimic only)");
-        options.addOption("n", "no-cache", false, "Disable internal caching for Mimic");
+        options.addOption("C", "use-cache", false, "Enable internal caching for Mimic (opt-in)");
         options.addOption("E", "extended", false, "Extended output format (matches Maven dependency:list)");
         options.addOption("dm", "debug-match", true, "Filter for mimic debug trace logs (e.g. jaxb-runtime)");
+        options.addOption("ss", "skip-siblings", false, "Skip sibling modules in the final output (Mimic only)");
         options.addOption("h", "help", false, "Print this help message");
 
         CommandLineParser parser = new DefaultParser();
@@ -39,7 +40,7 @@ public class Main {
             String cachePath = cmd.getOptionValue("c", System.getProperty("user.home") + File.separator + ".m2" + File.separator + "repository");
             String reactorPath = cmd.getOptionValue("r");
             boolean useMimic = cmd.hasOption("mimic");
-            boolean noCache = cmd.hasOption("no-cache");
+            boolean useCache = cmd.hasOption("use-cache");
             boolean extended = cmd.hasOption("extended");
             String debugMatch = cmd.getOptionValue("dm");
 
@@ -54,31 +55,42 @@ public class Main {
 
             ResolutionResult result = null;
             if (useMimic) {
-                System.out.println("Using Mimic implementation (noCache=" + noCache + ")...");
+                System.out.println("Using Mimic implementation (useCache=" + useCache + ")...");
                 MimicDependencyResolver mimic = new MimicDependencyResolver(new File(cachePath), new ArrayList<>());
                 if (reactorPath != null) {
                     mimic.addReactorPath(new File(reactorPath));
                 }
                 if (debugMatch != null) mimic.setDebugFilter(debugMatch);
+                if (cmd.hasOption("ss")) mimic.setSkipSiblings(true);
 
                 // Cold run
-                if (noCache) mimic.clearCache();
+                mimic.setNoCache(true); // Ensure no persistent cache for cold run (optional, depends on definition of "cold")
+                // Wait! If I want a REAL cold run, I should delete existing caches.
+                // But for now, just skip loading.
+
                 long startCold = System.currentTimeMillis();
                 result = mimic.resolve(Path.of(pomPath), scopes);
                 long endCold = System.currentTimeMillis();
 
-                // Hot run
-                if (noCache) mimic.clearCache();
+                // Warm run (with memory cache only)
                 long startHot = System.currentTimeMillis();
                 mimic.resolve(Path.of(pomPath), scopes);
                 long endHot = System.currentTimeMillis();
 
-                System.out.println("Performance Breakdown:");
-                System.out.println("  Cold Cache: " + (endCold - startCold) + "ms");
-                System.out.println("  Hot Cache:  " + (endHot - startHot) + "ms");
+                System.out.println("Performance Breakdown (Memory Cache):");
+                System.out.println("  Initial: " + (endCold - startCold) + "ms");
+                System.out.println("  Subsequent: " + (endHot - startHot) + "ms");
+
+                if (useCache) {
+                    mimic.setNoCache(false);
+                    long startPersistent = System.currentTimeMillis();
+                    mimic.resolve(Path.of(pomPath), scopes);
+                    long endPersistent = System.currentTimeMillis();
+                    System.out.println("  Persistent Cache (Warm): " + (endPersistent - startPersistent) + "ms");
+                }
 
             } else {
-                System.out.println("Using Maven implementation (noCache=" + noCache + ")...");
+                System.out.println("Using Maven implementation (useCache=" + useCache + ")...");
 
                 // Maven cold run (new instance)
                 MavenDependencyResolver mavenCold = new MavenDependencyResolver(cachePath);
@@ -88,9 +100,9 @@ public class Main {
                 result = mavenCold.resolve(Path.of(pomPath), scopes);
                 long endCold = System.currentTimeMillis();
 
-                // Maven hot run (reuse instance/session if possible, or new instance if noCache)
-                MavenDependencyResolver mavenHot = noCache ? new MavenDependencyResolver(cachePath) : mavenCold;
-                if (noCache && reactorPath != null) mavenHot.addReactorPath(new File(reactorPath));
+                // Maven hot run (reuse instance/session if possible, or new instance if !useCache)
+                MavenDependencyResolver mavenHot = !useCache ? new MavenDependencyResolver(cachePath) : mavenCold;
+                if (!useCache && reactorPath != null) mavenHot.addReactorPath(new File(reactorPath));
 
                 long startHot = System.currentTimeMillis();
                 mavenHot.resolve(Path.of(pomPath), scopes);

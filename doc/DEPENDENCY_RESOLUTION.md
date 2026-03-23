@@ -263,4 +263,34 @@ Discovery: Direct dependencies defined in the root POM with provided scope shoul
 ### 44. Global `dependencyManagement` Application
 **Discovery:** The root project's `dependencyManagement` section acts as a global version override for ALL transitive dependencies anywhere in the tree, regardless of depth, unless a closer explicit direct version exists.
 - **Problem:** Transitive dependencies like `log4j-api` were resolving to mismatched versions because the root `dependencyManagement` was only being checked at shallower levels, and deeper transitive imports were bypassing it.
-- **Solution:** Pass the root project's `PomContext` (or its managed versions map) down the entire BFS traversal and evaluate it for every encountered transitive dependency before applying "nearest-wins" resolution.
+- **Discovery:** Properties like `project.version`, `${pom.version}`, `${parent.groupId}`, and `${project.parent.artifactId}` are critical aliases that Maven populates automatically from the GAV info or the `<parent>` tag.
+- **Problem:** Many POMs use these to avoid repeating version strings.
+- **Solution:** Explicitly inject these aliases into the `PropertyContext` during model parsing.
+
+### 46. Strict Dependency Section Parsing
+- **Discovery:** Maven ONLY resolves dependencies found in `project/dependencies` or `project/profiles/profile/dependencies`. It ignores dependencies declared inside `build/plugins/plugin/dependencies` (which are used only for the plugin's own classpath).
+- **Problem:** The Zig mimic was incorrectly pulling in 150+ extra dependencies (like `checkstyle`, `pmd`) because it matched *any* `<dependency>` tag in the XML regardless of nesting.
+- **Solution:** Implement a path-aware XML parser state (e.g., `isInside`) that strictly matches project-level dependency sections.
+
+### 47. Parent POM relativePath Resolution (Directory vs File)
+- **Discovery:** The `<relativePath>` tag in the `<parent>` section can point to a specific POM file override OR a directory containing a `pom.xml`.
+- **Problem:** If it points to a directory, simply joining it with the current directory might fail if the resolver expects a filename.
+- **Solution:** Check if the resolved path ends with `.xml`. If not, and it's a directory, append `/pom.xml` automatically.
+
+## Verification
+Parity is verified by comparing against `mvnd dependency:list -Dscope=runtime`.
+- **Target:** 183 artifacts (for `test/deps/complex1/core` runtime scope).
+- **Mimic Status:**
+  - **Zig Mimic (Current Session)**: 
+    - **100% parity achieved!** The mimic now outputs exactly the same 183 artifacts with matching versions and scopes.
+    - Fixed memory corruption issues (use-after-free in `context.zig` and missing cache check in `resolver.zig`).
+    - Resolved `${spring-web-version}` and `s3` version mismatches.
+    - Eliminated 150+ extraneous plugin dependencies.
+  - **Java Mimic**: 100% parity achieved for both `back` and `core`.
+  - Logback matched exactly (`1.5.11`).
+  - AWS SDK transition tree largely matched (v19).
+  - Bugsnag range correctly resolved (`3.8.0`).
+  - Jackson variables resolved using Project Properties.
+  - `amqp-client` correctly resolved to `5.21.0` (Direct version wins over Managed).
+  - `spring-websocket` correctly resolved to `6.2.11` (Direct version wins over Managed).
+  - Test and Provided scopes do not leak into runtime.

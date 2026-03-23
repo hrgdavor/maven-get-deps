@@ -12,7 +12,18 @@ import java.util.Map;
 
 public class Main {
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
+        // Quick scan for kevUrl to set it as early as possible for ODC static initializers
+        for (int i = 0; i < args.length - 1; i++) {
+            if ("--kevUrl".equals(args[i]) || "-ku".equals(args[i])) {
+                String kv = args[i + 1];
+                System.setProperty("data.kev.url", kv);
+                System.setProperty("cisa.kev.url", kv);
+                System.setProperty("analyzer.knownexploitedvulnerability.url", kv);
+                break;
+            }
+        }
+
         Options options = new Options();
         options.addOption(new Option("h", "help", false, "Show help"));
         options.addOption(new Option("r", "report", true, "Report output file (markdown)"));
@@ -22,6 +33,7 @@ public class Main {
         options.addOption(new Option("nd", "nvd-api-delay", true, "Delay in milliseconds between NVD API requests"));
         options.addOption(new Option("i", "input", true, "Input file containing dependencies (newline delimited G:A:V)"));
         options.addOption(new Option("t", "threshold", true, "CVSS severity threshold (0.0 to 10.0, default: 8.0)"));
+        options.addOption(new Option("ku", "kevUrl", true, "URL to the Known Exploited Vulnerabilities JSON feed"));
 
         CommandLineParser parser = new DefaultParser();
         HelpFormatter formatter = new HelpFormatter();
@@ -36,9 +48,15 @@ public class Main {
 
             String dataDir = cmd.getOptionValue("data", System.getProperty("user.home") + "/.m2/dependency-check-data");
             String nvdApiDelay = cmd.getOptionValue("nvd-api-delay");
+            String kevUrl = cmd.getOptionValue("kevUrl");
+            
+            if (kevUrl != null && !kevUrl.isBlank()) {
+                System.setProperty("data.kev.url", kevUrl);
+                System.setProperty("analyzer.knownexploitedvulnerability.url", kevUrl);
+            }
 
             if (cmd.hasOption("update")) {
-                CveScanner.updateDatabase(dataDir, cmd.getOptionValue("key"), nvdApiDelay);
+                CveScanner.updateDatabase(dataDir, cmd.getOptionValue("key"), nvdApiDelay, kevUrl);
                 return;
             }
 
@@ -52,7 +70,7 @@ public class Main {
             }
 
             Map<String, List<String>> deps = readDeps(inputPath);
-            CveReportResult result = CveScanner.scan(dataDir, deps, nvdApiDelay);
+            CveReportResult result = CveScanner.scan(dataDir, deps, nvdApiDelay, kevUrl);
 
             String report = result.formatMarkdownReport();
             Files.writeString(Path.of(reportPath), report);

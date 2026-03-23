@@ -46,6 +46,9 @@ fn printUsage() void {
         \\  --classpath                 Output as classpath string
         \\  --extra-classpath <file>    Append extra entries
         \\  --cache <dir>               Local repo path
+        \\  --extended, -E              Extended output format
+        \\  --skip-siblings, -ss        Skip reactor siblings (Mimic only)
+        \\  --debug-match, -dm          Filter debug traces (e.g. 'jakarta.inject')
         \\
     , .{});
 }
@@ -228,6 +231,9 @@ fn cmdMimic(allocator: std.mem.Allocator, args: []const []const u8) !void {
     var cache_tree: bool = false;
     var local_only: bool = false;
     var print_count: bool = false;
+    var extended_format: bool = false;
+    var skip_siblings: bool = false;
+    var debug_match: ?[]const u8 = null;
 
     var i: usize = 0;
     while (i < args.len) : (i += 1) {
@@ -253,6 +259,13 @@ fn cmdMimic(allocator: std.mem.Allocator, args: []const []const u8) !void {
             local_only = true;
         } else if (std.mem.eql(u8, arg, "--count")) {
             print_count = true;
+        } else if (std.mem.eql(u8, arg, "--extended") or std.mem.eql(u8, arg, "-E")) {
+            extended_format = true;
+        } else if (std.mem.eql(u8, arg, "--skip-siblings") or std.mem.eql(u8, arg, "-ss")) {
+            skip_siblings = true;
+        } else if (std.mem.eql(u8, arg, "--debug-match") or std.mem.eql(u8, arg, "-dm")) {
+            i += 1;
+            if (i < args.len) debug_match = args[i];
         }
     }
 
@@ -275,6 +288,8 @@ fn cmdMimic(allocator: std.mem.Allocator, args: []const []const u8) !void {
     defer resolver.deinit();
     resolver.cache_enabled = cache_tree;
     resolver.local_only = local_only;
+    resolver.skip_siblings = skip_siblings;
+    if (debug_match) |dm| resolver.debug_match = try allocator.dupe(u8, dm);
 
     for (reactor_paths.items) |rp| try resolver.scanReactor(rp);
     for (extra_repos.items) |url| try resolver.addRepository(url);
@@ -296,17 +311,15 @@ fn cmdMimic(allocator: std.mem.Allocator, args: []const []const u8) !void {
     const result = try resolver.resolvePom(pom_path.?, scopes.items);
     const end_ms = std.time.milliTimestamp();
     
-    var out_buf: [4096]u8 = undefined;
-    var stdout_writer = std.fs.File.stdout().writer(&out_buf);
-    const stdout = &stdout_writer.interface;
-
     if (print_count) {
-        try stdout.print("{d}\n", .{result.artifacts.len});
-        try stdout.flush();
+        std.debug.print("{d}\n", .{result.artifacts.len});
     } else {
         for (result.artifacts) |ad| {
-            try stdout.print("{s}:{s}:{s}:{s}\n", .{ ad.group_id, ad.artifact_id, ad.version, ad.scope });
-            try stdout.flush();
+            if (extended_format) {
+                std.debug.print("   {s}:{s}:{s}:{s}:{s} ({s})\n", .{ ad.group_id, ad.artifact_id, ad.type, ad.version, ad.scope, ad.path });
+            } else {
+                std.debug.print("{s}:{s}:{s}:{s}:{s}\n", .{ ad.group_id, ad.artifact_id, ad.type, ad.version, ad.scope });
+            }
         }
     }
 

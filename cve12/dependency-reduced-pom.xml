@@ -36,6 +36,12 @@
                 <transformer>
                   <basename>org.owasp.dependencycheck.data.nvdcve.DatabaseManager</basename>
                 </transformer>
+                <transformer>
+                  <resource>dependencycheck.properties</resource>
+                </transformer>
+                <transformer>
+                  <resource>org/owasp/dependencycheck/utils/dependencycheck.properties</resource>
+                </transformer>
               </transformers>
             </configuration>
           </execution>
@@ -85,9 +91,9 @@
     </profile>
   </profiles>
   <properties>
-    <maven.compiler.target>17</maven.compiler.target>
-    <owasp.version>12.2.0</owasp.version>
     <maven.compiler.source>17</maven.compiler.source>
+    <maven.compiler.target>17</maven.compiler.target>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <owasp.version>12.2.0</owasp.version>
   </properties>
 </project>

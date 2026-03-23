@@ -6,12 +6,15 @@ function parseMaven(filename) {
         const content = readFileSync(filename, 'utf-8');
         const lines = content.split(/\r?\n/);
         for (let line of lines) {
-            // Strip ANSI codes
             line = line.replace(/\u001b\[[0-9;]*m/g, '').trim();
             if (!line) continue;
-            // Maven format:   groupId:artifactId:type:version:scope -- module ...
-            const depPart = line.split(' -- ')[0].trim();
-            const parts = depPart.split(':');
+            
+            // Remove [INFO] etc.
+            const cleanLine = line.replace(/^\[[A-Z]+\]\s*/, '').trim();
+            if (!cleanLine) continue;
+
+            const depPart = cleanLine.split(' -- ')[0].trim();
+            const parts = depPart.split(':').map(p => p.trim());
             if (parts.length >= 5) {
                 // groupId:artifactId:type:version:scope
                 deps.add(parts.slice(0, 5).join(':'));
@@ -28,17 +31,17 @@ function parseCli(filename) {
     try {
         const content = readFileSync(filename, 'utf-8');
         const lines = content.split(/\r?\n/);
-        let startCollecting = false;
         for (let line of lines) {
-            line = line.trim();
-            if (line.includes('Resolved Dependencies')) {
-                startCollecting = true;
-                continue;
-            }
-            if (startCollecting && line) {
-                // CLI format:   groupId:artifactId:type:version:scope (path)
-                const depPart = line.split(' (')[0].trim();
-                deps.add(depPart);
+            line = line.trim().replace(/\u001b\[[0-9;]*m/g, '');
+            if (!line || line.includes('Resolved Dependencies') || line.includes('mimic')) continue;
+            
+            // Remove potential [DEBUG] etc.
+            const cleanLine = line.replace(/^\[[A-Z-]+\]\s*/, '').trim();
+
+            const depPart = cleanLine.split(' (')[0].trim();
+            const parts = depPart.split(':').map(p => p.trim()).filter(p => p.length > 0);
+            if (parts.length >= 5) {
+                deps.add(parts.slice(0, 5).join(':'));
             }
         }
     } catch (e) {

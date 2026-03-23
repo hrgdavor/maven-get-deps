@@ -115,3 +115,9 @@ To prevent overwriting manually tuned metadata (like specific reflection entries
         $OLD_META $NEW_META $OLD_META
     ```
 4.  **Rebuild**: Run the native build again. The plugin will automatically pick up configurations from `META-INF/native-image`.
+
+# publish
+
+```sh
+mvnd clean deploy -Ppublish
+```

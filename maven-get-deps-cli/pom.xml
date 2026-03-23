@@ -7,7 +7,7 @@
     <parent>
         <groupId>hr.hrg</groupId>
         <artifactId>maven-get-deps-parent</artifactId>
-        <version>1.0.1</version>
+        <version>${revision}</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
@@ -27,6 +27,10 @@
         <dependency>
             <groupId>hr.hrg</groupId>
             <artifactId>maven-get-deps-mimic</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>hr.hrg</groupId>
+            <artifactId>wyhash</artifactId>
         </dependency>
 
         <dependency>
