@@ -67,8 +67,6 @@ Native binaries with zero dependencies, optimized for production runtime usage.
 
 | Guide | Description |
 |---|---|
-| **[Interactive Nexus App](docs/nexus.html)** (Web App) | **The Unified Portal: Interactive progress tracking, achievements, and seamless doc/adventure navigation.** |
-| **[Adventures in Resolution](adventures/README.md)** (Markdown) | **The Telekinetic Nexus: Role-based paths (Architect, Warden, Gatekeeper) to master the suite.** |
 | [Deployment Philosophy](doc/README.usage-deploy.md) | Deploy thin JARs + a shared dep folder. Avoid fat JARs. |
 | [Systemd Daemon Guide](doc/README.systemd.md) | Deploy a Java daemon with `systemd` and atomic versioning. |
 | [Docker Integration (Dynamic)](doc/README.dynamic-docker.md) | Thin Docker images with a shared Maven cache. |
