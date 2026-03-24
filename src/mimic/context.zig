@@ -57,10 +57,7 @@ pub const PomContext = struct {
         while (it_m.next()) |entry| {
             const val = entry.value_ptr.*;
             try self.properties.put(try allocator.dupe(u8, entry.key_ptr.*), try allocator.dupe(u8, val));
-            if (self.isDebugMatch(entry.key_ptr.*, "")) {
-                std.debug.print("MIMIC: [CTX-OWN  ] {s}={s} in {s}\n", .{ entry.key_ptr.*, val, model.artifact_id orelse "unknown" });
             }
-        }
 
         // Project properties
         if (model.group_id) |g| try self.properties.put(try allocator.dupe(u8, "project.groupId"), try allocator.dupe(u8, g));
@@ -115,22 +112,23 @@ pub const PomContext = struct {
             const v_raw = dep.version orelse "";
             const scope_raw = dep.scope;
             
-            if (gid.len == 0 or aid.len == 0) {
-                 allocator.free(gid);
-                 allocator.free(aid);
-                 continue;
-            }
-
             const scope_resolved = if (scope_raw) |s| try self.resolveProperty(allocator, s) else try allocator.dupe(u8, "compile");
             defer allocator.free(scope_resolved);
 
-            if (std.mem.eql(u8, scope_resolved, "import") and std.mem.eql(u8, dep.type orelse "jar", "pom")) {
+            const type_raw = dep.type orelse "jar";
+            if (std.mem.eql(u8, scope_resolved, "import") and (std.mem.eql(u8, type_raw, "pom") or std.mem.eql(u8, type_raw, "jar"))) {
                 const v_resolved = try self.resolveProperty(allocator, v_raw);
                 defer allocator.free(v_resolved);
-                if (self.isDebugMatch(gid, aid)) std.debug.print("MIMIC: [BOM-IMPORT  ] {s}:{s}:{s} in {s}\n", .{ gid, aid, v_resolved, model.artifact_id orelse "???" });
-                if (try bom_resolver.load(gid, aid, v_resolved, &self.properties, self.debug_match)) |bom_ctx| {
-                    try self.mergeManaged(bom_ctx);
-                    try self.addImportedBOM(bom_ctx);
+
+                const bom_ctx_res = bom_resolver.load(gid, aid, v_resolved, &self.properties, self.debug_match);
+                if (bom_ctx_res) |bom_opt| {
+                    if (bom_opt) |bom_ctx| {
+                        std.debug.print("MIMIC: [IMPORT] {s}:{s}:{s} into {s}\n", .{ gid, aid, v_resolved, self.model.artifact_id orelse "unknown" });
+                        try self.mergeManaged(bom_ctx);
+                        try self.addImportedBOM(bom_ctx);
+                    }
+                } else |err| {
+                    std.debug.print("MIMIC: [BOM-ERROR] Failed to load BOM {s}:{s}:{s}: {}\n", .{ gid, aid, v_resolved, err });
                 }
             } else {
                 const ga = try std.fmt.allocPrint(allocator, "{s}:{s}", .{ gid, aid });
@@ -209,17 +207,19 @@ pub const PomContext = struct {
         var it_v = other.managed_versions.iterator();
         while (it_v.next()) |entry| {
             if (!self.managed_versions.contains(entry.key_ptr.*)) {
-                const ga = try self.allocator.dupe(u8, entry.key_ptr.*);
-                const v = try self.allocator.dupe(u8, entry.value_ptr.*);
-                try self.managed_versions.put(ga, v);
+                if (other.resolveProperty(self.allocator, entry.value_ptr.*)) |v| {
+                    const ga = try self.allocator.dupe(u8, entry.key_ptr.*);
+                    try self.managed_versions.put(ga, v);
+                } else |_| continue;
             }
         }
         var it_s = other.managed_scopes.iterator();
         while (it_s.next()) |entry| {
             if (!self.managed_scopes.contains(entry.key_ptr.*)) {
-                const ga = try self.allocator.dupe(u8, entry.key_ptr.*);
-                const s = try self.allocator.dupe(u8, entry.value_ptr.*);
-                try self.managed_scopes.put(ga, s);
+                if (other.resolveProperty(self.allocator, entry.value_ptr.*)) |s| {
+                    const ga = try self.allocator.dupe(u8, entry.key_ptr.*);
+                    try self.managed_scopes.put(ga, s);
+                } else |_| continue;
             }
         }
     }
@@ -313,14 +313,14 @@ pub const PomContext = struct {
             if (self.model.parent) |p| if (p.artifact_id) |v| return try allocator.dupe(u8, v);
         } 
         
-        if (self.properties.get(name)) |v| return try allocator.dupe(u8, v);
+        if (self.properties.get(name)) |v| {
+            return try allocator.dupe(u8, v);
+        }
         
         if (self.parent) |p| {
-             if (try p.getPropertyValue(allocator, name)) |v| return v;
-        }
-
-        for (self.imported_boms.items) |bom| {
-            if (try bom.getPropertyValue(allocator, name)) |v| return v;
+             if (try p.getPropertyValue(allocator, name)) |v| {
+                return v;
+             }
         }
 
         if (self.reactor_properties) |rp| {

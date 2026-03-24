@@ -162,7 +162,8 @@ When resolving transitively, the scope of a child dependency is filtered by the 
 If two versions of the same artifact are at the same depth and neither is managed, the version from the dependency that was declared FIRST in the POM (top-to-bottom) wins.
 
 ### 24. Managed Scope Precedence
-Similar to versions, `dependencyManagement` can provide a default scope if it's missing in the dependency declaration. However, an explicit `<scope>` in a direct dependency always wins over the managed scope. สำหรับ transitive dependencies, both regulated version AND managed scope from the project's `dependencyManagement` should be applied if present.
+Similar to versions, `dependencyManagement` can provide a default scope if it's missing in the dependency declaration. However, an explicit `<scope>` in a direct dependency always wins over the managed scope. For transitive dependencies, both managed version AND managed scope from the project's `dependencyManagement` are applied.
+**Nuance:** Only **EXPLICITLY** defined scopes in `dependencyManagement` should override a propagated transitive scope. If the management entry lacks a `<scope>` tag (implicit `compile`), it should **NOT** override a `runtime` or `provided` scope encountered transitively.
 
 ### 25. Scope Strength Mediation (Tie Breaking)
 **Discovery:** When Maven traverses the dependency tree, it usually follows "nearest wins" (BFS). However, if it encounters the *exact same* dependency at the *exact same depth* but with different scopes, it performs "Scope Strength Mediation".
@@ -294,3 +295,15 @@ Parity is verified by comparing against `mvnd dependency:list -Dscope=runtime`.
   - `amqp-client` correctly resolved to `5.21.0` (Direct version wins over Managed).
   - `spring-websocket` correctly resolved to `6.2.11` (Direct version wins over Managed).
   - Test and Provided scopes do not leak into runtime.
+### 48. Implicit Managed Scopes vs. Propagated Scopes
+- **Problem:** If a BOM entry in `<dependencyManagement>` lacks a `<scope>` tag, Zig was defaulting it to `compile` and using it to override transitive `runtime` scopes.
+- **Discovery:** Maven only uses the managed scope to override if it is explicitly declared in the management entry. An implicit `compile` in management is non-authoritative for scope overrides (unlike versions, which are always authoritative).
+- **Solution:** Distinguished between "specified" and "resolved" managed scopes. Only specified ones can override a non-null propagated scope.
+
+### 49. BOM Import Recursion & Parent Inheritance
+- **Problem:** BOMs imported in a parent POM were being ignored because the parent context wasn't using the project's BOM resolver.
+- **Solution:** Pass the real `BOMResolver` through the entire parent chain. Ensure `managed_versions` and `managed_scopes` from parent-imported BOMs are merged into the child context.
+
+### 50. Profile-Aware Dependency Management
+- **Problem:** Many version properties and some management entries are defined inside `<profiles>` (even if the profile is "always on" or active by default).
+- **Solution:** Extend the `pom.zig` scan to include `<profiles>` -> `<profile>` -> `<dependencyManagement>`.

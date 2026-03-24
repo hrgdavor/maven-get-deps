@@ -16,6 +16,28 @@ pub const ArtifactDescriptor = struct {
     path: []const u8,
 };
 
+pub const CachedDependency = struct {
+    group_id: []const u8,
+    artifact_id: []const u8,
+    version: []const u8,
+    classifier: ?[]const u8,
+    type: []const u8,
+    scope: []const u8,
+    optional: bool,
+    exclusions: []const []const u8,
+
+    pub fn deinit(self: CachedDependency, allocator: std.mem.Allocator) void {
+        allocator.free(self.group_id);
+        allocator.free(self.artifact_id);
+        allocator.free(self.version);
+        if (self.classifier) |c| allocator.free(c);
+        allocator.free(self.type);
+        allocator.free(self.scope);
+        for (self.exclusions) |ex| allocator.free(ex);
+        allocator.free(self.exclusions);
+    }
+};
+
 pub const ResolutionResult = struct {
     artifacts: []const ArtifactDescriptor,
     artifact_files: std.StringHashMap([]const u8),
@@ -219,7 +241,6 @@ pub const MimicResolver = struct {
         root_ctx: ?*context.PomContext,
         project_versions: std.StringHashMap([]const u8)
     ) !ResolutionResult {
-        var result_list = std.ArrayListUnmanaged(ArtifactDescriptor){};
         var artifact_files = std.StringHashMap([]const u8).init(self.allocator);
         var errors = std.ArrayListUnmanaged([]const u8){};
 
@@ -300,52 +321,83 @@ pub const MimicResolver = struct {
             const is_relevant = isScopeRelevant(ad.scope, effective_scopes, current.depth == 0);
 
             const existing_depth = resolved_depths.get(ga);
-            if (existing_depth) |d| {
-                if (current.depth > d) {
-                    // Fix 3: Optional vs Required Intersection (Item 35)
-                    const is_existing_optional = resolved_optionals.contains(ga);
-                    if (!is_existing_optional or ad.optional) continue;
-                    // Proceed to override optional with required
-                } else if (current.depth == d) {
-                    const existing_scope = resolved_scopes.get(ga) orelse "compile";
-                    const is_existing_optional = resolved_optionals.contains(ga);
+            if (existing_depth) |old_depth| {
+                const existing_scope = resolved_scopes.get(ga) orelse "compile";
+                const is_existing_optional = resolved_optionals.contains(ga);
 
-                    const scope_promoted = isScopeStronger(ad.scope, existing_scope);
-                    const optional_promoted = (is_existing_optional and !ad.optional);
+                if (old_depth == 0 and std.mem.eql(u8, existing_scope, "provided")) continue;
 
-                    if (scope_promoted) {
-                        if (self.isDebugMatch(ad.group_id, ad.artifact_id)) {
-                             std.debug.print("MIMIC: [SCOPE-PROMOTE] {s} from {s} to {s} at depth {d} via {s}\n", .{ ga, existing_scope, ad.scope, current.depth, current.path });
-                        }
-                    }
+                const scope_promoted = isScopeStronger(ad.scope, existing_scope);
+                const optional_promoted = (is_existing_optional and !ad.optional);
 
+                if (current.depth > old_depth) {
+                    // Only allow promotion if scope is STRONGER
+                    if (!scope_promoted) continue;
+                } else if (current.depth == old_depth) {
                     if (!scope_promoted and !optional_promoted) continue;
+                }
 
-                    // Fix 4: Root Provided Protection (Item 36)
-                    if (d == 0 and std.mem.eql(u8, existing_scope, "provided") and scope_promoted) {
-                        // Prevent promotion if root was provided
-                        if (!optional_promoted) continue;
-                    }
+                if (self.isDebugMatch(ad.group_id, ad.artifact_id)) {
+                     std.debug.print("MIMIC: [PROMOTE] {s} from {s} to {s} (depth {d}->{d})\n", .{ ga, existing_scope, ad.scope, old_depth, current.depth });
+                }
+                
+                try resolved_scopes.put(try self.allocator.dupe(u8, ga), try self.allocator.dupe(u8, ad.scope));
+                
+                // If we promoted from a 'blocking' scope (one not in target) to a relevant one,
+                // we might need to re-expand. Or if we promoted from provided to compile.
+                const was_relevant = isScopeRelevant(existing_scope, effective_scopes, old_depth == 0);
+                const is_now_relevant = isScopeRelevant(ad.scope, effective_scopes, current.depth == 0);
+                
+                if (!was_relevant and is_now_relevant) {
+                    if (self.isDebugMatch(ad.group_id, ad.artifact_id)) std.debug.print("MIMIC: [RE-EXPAND] {s} after promotion\n", .{ga});
+                    // Proceed to expand
+                } else {
+                    continue; // Already expanded or still blocked
                 }
             }
 
+            // Update maps with memory safety
             if (existing_depth == null) {
                 try resolved_depths.put(try self.allocator.dupe(u8, ga), current.depth);
+            } else if (current.depth < existing_depth.?) {
+                const gop = try resolved_depths.getOrPut(try self.allocator.dupe(u8, ga));
+                if (gop.found_existing) self.allocator.free(gop.key_ptr.*);
+                gop.value_ptr.* = current.depth;
             }
-            
-            // Record version/scope/path (always update on promotion or first encounter)
-            try resolved_versions.put(try self.allocator.dupe(u8, ga), try self.allocator.dupe(u8, ad.version));
-            try resolved_scopes.put(try self.allocator.dupe(u8, ga), try self.allocator.dupe(u8, ad.scope));
-            try resolved_paths.put(try self.allocator.dupe(u8, ga), try self.allocator.dupe(u8, current.path));
 
-            const ga_owned = try self.allocator.dupe(u8, ga);
+            {
+                const gop = try resolved_versions.getOrPut(try self.allocator.dupe(u8, ga));
+                if (gop.found_existing) {
+                    self.allocator.free(gop.key_ptr.*);
+                    self.allocator.free(gop.value_ptr.*);
+                }
+                gop.value_ptr.* = try self.allocator.dupe(u8, ad.version);
+            }
+            {
+                const gop = try resolved_scopes.getOrPut(try self.allocator.dupe(u8, ga));
+                if (gop.found_existing) {
+                    self.allocator.free(gop.key_ptr.*);
+                    self.allocator.free(gop.value_ptr.*);
+                }
+                gop.value_ptr.* = try self.allocator.dupe(u8, ad.scope);
+            }
+            {
+                const gop = try resolved_paths.getOrPut(try self.allocator.dupe(u8, ga));
+                if (gop.found_existing) {
+                    self.allocator.free(gop.key_ptr.*);
+                    self.allocator.free(gop.value_ptr.*);
+                }
+                gop.value_ptr.* = try self.allocator.dupe(u8, current.path);
+            }
+
             if (ad.optional) {
-                try resolved_optionals.put(ga_owned, {});
+                if (!resolved_optionals.contains(ga)) {
+                    try resolved_optionals.put(try self.allocator.dupe(u8, ga), {});
+                }
             } else {
                 if (resolved_optionals.fetchRemove(ga)) |kv| {
                     self.allocator.free(kv.key);
                 }
-                self.allocator.free(ga_owned);
             }
 
             if (!is_relevant) continue;
@@ -359,185 +411,226 @@ pub const MimicResolver = struct {
             if (jar_file) |jf| try artifact_files.put(try self.allocator.dupe(u8, ga), try self.allocator.dupe(u8, jf));
 
             const pf_res = self.getOrDownload(ad, "pom");
-            if (self.isDebugMatch(ad.group_id, ad.artifact_id)) {
-                if (pf_res) |pf| {
-                    std.debug.print("MIMIC: [POM-CHECK] {s}:{s}:{s} pomFile={s} exists=true\n", .{ ad.group_id, ad.artifact_id, ad.version, pf });
-                } else |err| {
-                    std.debug.print("MIMIC: [POM-CHECK] {s}:{s}:{s} pomFile=null exists=false ({s})\n", .{ ad.group_id, ad.artifact_id, ad.version, @errorName(err) });
-                }
-            }
             if (pf_res) |pf| {
                 defer self.allocator.free(pf);
-                const ctx_res = self.loadPomContext(pf, ad, &self.reactor_properties);
-                if (ctx_res) |ctx| {
-                    var head_ctx: ?*context.PomContext = ctx;
-                    while (head_ctx) |cur| {
-                        for (cur.model.dependencies) |dep| {
-                            const d_gid = try cur.resolveProperty(self.allocator, dep.group_id orelse "");
-                            const d_aid = try cur.resolveProperty(self.allocator, dep.artifact_id orelse "");
-                            const d_ga = try std.fmt.allocPrint(self.allocator, "{s}:{s}", .{ d_gid, d_aid });
-                            defer self.allocator.free(d_ga);
-                            const d_ga_wild = try std.fmt.allocPrint(self.allocator, "{s}:*", .{d_gid});
-                            defer self.allocator.free(d_ga_wild);
+                
+                var direct_deps: ?[]const CachedDependency = null;
+                const is_reactor = self.reactor_poms.get(ga) != null;
+                const pom_hash = if (is_reactor) self.calculateWyhash64(pf) else @as(i64, -1);
 
-                            if (current.exclusions.contains(d_ga) or current.exclusions.contains(d_ga_wild)) {
-                                if (self.isDebugMatch(d_gid, d_aid)) {
-                                    std.debug.print("MIMIC: [EXCLUDE-SKIP] {s} in {s}:{s}\n", .{ d_ga, ad.group_id, ad.artifact_id });
+                if (self.cache_enabled and !is_reactor) {
+                    const cache_file = try self.getCacheFile(pf, effective_scopes);
+                    defer self.allocator.free(cache_file);
+                    direct_deps = try self.loadCache(cache_file, pom_hash);
+                    if (direct_deps != null and self.isDebugMatch(ad.group_id, ad.artifact_id)) {
+                        std.debug.print("MIMIC: [CACHE-HIT] {s}:{s}:{s} (hash={d})\n", .{ ad.group_id, ad.artifact_id, ad.version, pom_hash });
+                    }
+                }
+
+                if (direct_deps == null) {
+                    const ctx_res = self.loadPomContext(pf, ad, &self.reactor_properties);
+                    if (ctx_res) |ctx| {
+                        var deps_list = std.ArrayListUnmanaged(CachedDependency){};
+                        
+                        // We need to collect all dependencies including those from parents, 
+                        // matching Java's ctx.getEffectiveDependencies()
+                        var head_ctx: ?*context.PomContext = ctx;
+                        while (head_ctx) |cur| {
+                            for (cur.model.dependencies) |dep| {
+                                const d_gid = try cur.resolveProperty(self.allocator, dep.group_id orelse "");
+                                const d_aid = try cur.resolveProperty(self.allocator, dep.artifact_id orelse "");
+                                
+                                var d_v_raw = dep.version;
+                                if (d_v_raw == null) d_v_raw = cur.getManagedVersion(d_gid, d_aid);
+                                if (d_v_raw == null) {
+                                    self.allocator.free(d_gid);
+                                    self.allocator.free(d_aid);
+                                    continue;
                                 }
-                                continue;
-                            }
+                                const d_v_prop = try cur.resolveProperty(self.allocator, d_v_raw.?);
+                                const d_v = try self.resolveVersionRange(ArtifactDescriptor{ .group_id = d_gid, .artifact_id = d_aid, .version = d_v_prop, .scope = "", .path = "" });
+                                self.allocator.free(d_v_prop);
 
-                            // Scope resolution
-                            var scope_opt: ?[]const u8 = null;
-                            var is_skipped = false;
-                            if (dep.scope) |s| {
-                                const s_res = try cur.resolveProperty(self.allocator, s);
-                                scope_opt = propagateScope(ad.scope, s_res);
-                                self.allocator.free(s_res);
-                                if (scope_opt == null) is_skipped = true;
-                            } else {
-                                // 1. Root management (High priority)
-                                if (root_ctx) |rctx| {
-                                    var ms: ?[]const u8 = null;
-                                    var curr_m: ?*context.PomContext = root_ctx;
-                                    while (curr_m) |c| : (curr_m = c.parent) {
-                                        if (c.getManagedScope(d_gid, d_aid)) |s| {
-                                            ms = s;
-                                            break;
-                                        }
-                                    }
-                                    if (ms) |scope_raw| {
-                                        const ms_res = try rctx.resolveProperty(self.allocator, scope_raw);
-                                        scope_opt = propagateScope(ad.scope, ms_res);
-                                        self.allocator.free(ms_res);
-                                        if (scope_opt == null) is_skipped = true;
-                                    }
+                                 var d_s_raw = dep.scope;
+                                 if (d_s_raw == null) d_s_raw = cur.getManagedScope(d_gid, d_aid);
+                                 const d_s = try cur.resolveProperty(self.allocator, d_s_raw orelse "compile");
+
+                                const is_opt = blk_opt: {
+                                    const opt_raw = try cur.resolveProperty(self.allocator, if (dep.optional) "true" else "false");
+                                    defer self.allocator.free(opt_raw);
+                                    break :blk_opt std.mem.eql(u8, opt_raw, "true");
+                                };
+
+                                var ex_list = std.ArrayListUnmanaged([]const u8){};
+                                for (dep.exclusions) |ex| {
+                                    const ex_gid = try cur.resolveProperty(self.allocator, ex.group_id orelse "");
+                                    const ex_aid = try cur.resolveProperty(self.allocator, ex.artifact_id orelse "");
+                                    const ex_ga = try std.fmt.allocPrint(self.allocator, "{s}:{s}", .{ ex_gid, ex_aid });
+                                    try ex_list.append(self.allocator, ex_ga);
+                                    self.allocator.free(ex_gid);
+                                    self.allocator.free(ex_aid);
                                 }
-                                // 2. Local management (Fallback)
-                                if (scope_opt == null and !is_skipped) {
-                                    if (cur.getManagedScope(d_gid, d_aid)) |ms| {
-                                        const ms_res = try cur.resolveProperty(self.allocator, ms);
-                                        scope_opt = propagateScope(ad.scope, ms_res);
-                                        self.allocator.free(ms_res);
-                                        if (scope_opt == null) is_skipped = true;
-                                    }
-                                }
-                                // 3. Default to compile
-                                if (scope_opt == null and !is_skipped) {
-                                    scope_opt = propagateScope(ad.scope, "compile");
-                                    if (scope_opt == null) is_skipped = true;
-                                }
+
+                                try deps_list.append(self.allocator, .{
+                                    .group_id = d_gid,
+                                    .artifact_id = d_aid,
+                                    .version = d_v,
+                                    .classifier = if (dep.classifier) |c| try cur.resolveProperty(self.allocator, c) else null,
+                                    .type = try cur.resolveProperty(self.allocator, dep.type orelse "jar"),
+                                    .scope = d_s,
+                                    .optional = is_opt,
+                                    .exclusions = try ex_list.toOwnedSlice(self.allocator),
+                                });
                             }
+                            head_ctx = cur.parent;
+                        }
+                        
+                        const final_deps = try deps_list.toOwnedSlice(self.allocator);
+                        direct_deps = final_deps;
+                        if (self.cache_enabled and !is_reactor) {
+                            const cache_file = try self.getCacheFile(pf, effective_scopes);
+                            defer self.allocator.free(cache_file);
+                            try self.saveCache(cache_file, direct_deps.?, pom_hash);
+                        }
+                    } else |_| {}
+                }
 
-                            if (is_skipped or scope_opt == null) continue;
-                            const scope = scope_opt.?;
+                if (direct_deps) |deps| {
+                    defer {
+                        for (deps) |d| d.deinit(self.allocator);
+                        self.allocator.free(deps);
+                    }
+                    for (deps) |cd| {
+                        const ga_trans = try std.fmt.allocPrint(arena, "{s}:{s}", .{ cd.group_id, cd.artifact_id });
+                        if (current.exclusions.contains(ga_trans) or current.exclusions.contains(try std.fmt.allocPrint(arena, "{s}:*", .{cd.group_id}))) {
+                            continue;
+                        }
 
-                            // Version resolution
-                            var version_range: ?[]const u8 = null;
-                            // 1. Root management (High priority)
-                            if (root_ctx) |rctx| {
-                                var mv: ?[]const u8 = null;
-                                var curr_v: ?*context.PomContext = root_ctx;
-                                while (curr_v) |c| : (curr_v = c.parent) {
-                                    if (c.getManagedVersion(d_gid, d_aid)) |v| {
-                                        mv = v;
-                                        break;
-                                    }
-                                }
-                                if (mv) |version_raw| version_range = try rctx.resolveProperty(self.allocator, version_raw);
+                        const s_opt = propagateScope(ad.scope, cd.scope);
+                        if (s_opt == null) continue;
+                        const s = s_opt.?;
+
+                        var v = cd.version;
+                        var final_s = s;
+                        
+                        // Fix: integrate project_versions override
+                        if (project_versions.get(ga_trans)) |p_version| {
+                            v = p_version;
+                        }
+
+                        if (root_ctx) |rctx| {
+                            if (rctx.getManagedVersion(cd.group_id, cd.artifact_id)) |mv| {
+                                const mv_res = try rctx.resolveProperty(arena, mv);
+                                const v_old = v;
+                                v = try self.resolveVersionRange(ArtifactDescriptor{ .group_id = cd.group_id, .artifact_id = cd.artifact_id, .version = mv_res, .scope = "", .path = "" });
+                                if (self.isDebugMatch(cd.group_id, cd.artifact_id)) std.debug.print("MIMIC: [MANAGED-VERSION] {s}:{s} override from {s} to {s} (via {s})\n", .{ cd.group_id, cd.artifact_id, v_old, v, mv_res });
                             }
-                            // 2. Local management (Fallback)
-                            if (version_range == null) {
-                                if (cur.getManagedVersion(d_gid, d_aid)) |mv| version_range = try cur.resolveProperty(self.allocator, mv);
-                            }
-                            // 3. Explicit version
-                            if (version_range == null) {
-                                if (dep.version) |v_raw| version_range = try cur.resolveProperty(self.allocator, v_raw);
-                            }
-                            if (version_range == null) continue;
-
-                            var version = try self.resolveVersionRange(ArtifactDescriptor{ .group_id = d_gid, .artifact_id = d_aid, .version = version_range.?, .scope = "", .path = "" });
-
-                            if (project_versions.get(d_ga)) |p_version| {
-                                self.allocator.free(version);
-                                version = try self.allocator.dupe(u8, p_version);
-                            }
-
-                            const next_path = try std.fmt.allocPrint(self.allocator, "{s} -> {s}:{s}:{s}", .{ current.path, d_gid, d_aid, version });
-                            var res_exclusions = std.ArrayListUnmanaged(pom.Exclusion){};
-                            for (dep.exclusions) |ex| {
-                                const ex_gid = try cur.resolveProperty(self.allocator, ex.group_id orelse "");
-                                const ex_aid = try cur.resolveProperty(self.allocator, ex.artifact_id orelse "");
-                                try res_exclusions.append(self.allocator, .{ .group_id = ex_gid, .artifact_id = ex_aid });
-                            }
-
-                            const trans_ad = ArtifactDescriptor{
-                                .group_id = d_gid,
-                                .artifact_id = d_aid,
-                                .version = version,
-                                .scope = scope,
-                                .type = dep.type orelse "jar",
-                                .exclusions = try res_exclusions.toOwnedSlice(self.allocator),
-                                .path = next_path,
-                                .optional = dep.optional,
-                            };
-
-                            // Fix 1: Block Transitive Masking (Item 41)
-                            // Only expand subtree if scope is relevant and NOT optional
-                            if (isScopeRelevant(scope, effective_scopes, false) and !trans_ad.optional) {
-                                if (self.isDebugMatch(d_gid, d_aid)) {
-                                    std.debug.print("MIMIC: [TRANS-ADD] {s}:{s}:{s} (s={s}) depth={d} parent: {s}:{s}:{s}\n", .{ d_gid, d_aid, version, scope, current.depth + 1, ad.group_id, ad.artifact_id, ad.version });
-                                }
-                                const next_node = try Node.init(self.allocator, trans_ad, current.depth + 1, current, next_path);
-                                try queue.append(self.allocator, next_node);
-                            } else {
-                                if (self.isDebugMatch(d_gid, d_aid)) {
-                                    std.debug.print("MIMIC: [TRANS-SKIP-SCOPE] {s}:{s}:{s} (s={s}, isOpt={any}) depth={d} parent: {s}:{s}:{s}\n", .{ d_gid, d_aid, version, scope, trans_ad.optional, current.depth + 1, ad.group_id, ad.artifact_id, ad.version });
+                            if (rctx.getManagedScope(cd.group_id, cd.artifact_id)) |ms| {
+                                const ms_res = try rctx.resolveProperty(arena, ms);
+                                if (propagateScope(ad.scope, ms_res)) |ps| {
+                                    if (self.isDebugMatch(cd.group_id, cd.artifact_id)) std.debug.print("MIMIC: [MANAGED-SCOPE] {s}:{s} override from {s} to {s} (via {s})\n", .{ cd.group_id, cd.artifact_id, final_s, ps, ms_res });
+                                    final_s = ps;
                                 }
                             }
                         }
-                        head_ctx = cur.parent;
+
+                        if (self.isDebugMatch(cd.group_id, cd.artifact_id)) {
+                             std.debug.print("MIMIC: [TRANS-EXPAND] {s}:{s}:{s} (s={s}, parent_s={s}) depth={d}\n", .{ cd.group_id, cd.artifact_id, v, final_s, ad.scope, current.depth + 1 });
+                        }
+
+                        const next_path = try std.fmt.allocPrint(self.allocator, "{s} -> {s}:{s}:{s}", .{ current.path, cd.group_id, cd.artifact_id, v });
+                        
+                        var res_exclusions = std.ArrayListUnmanaged(pom.Exclusion){};
+                        for (cd.exclusions) |ex_ga| {
+                            var ex_it = std.mem.splitScalar(u8, ex_ga, ':');
+                            const ex_gid = ex_it.next() orelse continue;
+                            const ex_aid = ex_it.next() orelse continue;
+                            try res_exclusions.append(self.allocator, .{ .group_id = try self.allocator.dupe(u8, ex_gid), .artifact_id = try self.allocator.dupe(u8, ex_aid) });
+                        }
+
+                        const trans_ad = ArtifactDescriptor{
+                            .group_id = try self.allocator.dupe(u8, cd.group_id),
+                            .artifact_id = try self.allocator.dupe(u8, cd.artifact_id),
+                            .version = try self.allocator.dupe(u8, v),
+                            .scope = try self.allocator.dupe(u8, final_s),
+                            .type = try self.allocator.dupe(u8, cd.type),
+                            .classifier = if (cd.classifier) |c| try self.allocator.dupe(u8, c) else null,
+                            .exclusions = try res_exclusions.toOwnedSlice(self.allocator),
+                            .path = next_path,
+                            .optional = cd.optional,
+                        };
+
+                        const skip_rel = !isScopeRelevant(final_s, effective_scopes, false) or trans_ad.optional;
+                        if (self.isDebugMatch(cd.group_id, cd.artifact_id)) {
+                            std.debug.print("MIMIC: [TRANS-CHECK] {s}:{s}:{s} (s={s}, opt={any}) skip={any} depth={d}\n", .{ cd.group_id, cd.artifact_id, v, final_s, trans_ad.optional, skip_rel, current.depth + 1 });
+                        }
+
+                        if (!skip_rel) {
+                            const next_node = try Node.init(self.allocator, trans_ad, current.depth + 1, current, next_path);
+                            try queue.append(self.allocator, next_node);
+                            // Cleanup dupe
+                            self.allocator.free(trans_ad.group_id);
+                            self.allocator.free(trans_ad.artifact_id);
+                            self.allocator.free(trans_ad.version);
+                            self.allocator.free(trans_ad.scope);
+                            self.allocator.free(trans_ad.type);
+                            if (trans_ad.classifier) |c| self.allocator.free(c);
+                            if (trans_ad.exclusions) |exs| {
+                                for (exs) |ex| { self.allocator.free(ex.group_id.?); self.allocator.free(ex.artifact_id.?); }
+                                self.allocator.free(exs);
+                            }
+                            self.allocator.free(trans_ad.path);
+                        } else {
+                            for (trans_ad.exclusions.?) |ex| { self.allocator.free(ex.group_id.?); self.allocator.free(ex.artifact_id.?); }
+                            self.allocator.free(trans_ad.exclusions.?);
+                            self.allocator.free(trans_ad.path);
+                        }
                     }
-                } else |_| {}
+                }
             } else |_| {}
         }
 
-        var it = resolved_versions.iterator();
-        while (it.next()) |entry| {
+        var res_list = std.ArrayListUnmanaged(ArtifactDescriptor){};
+        var it_v = resolved_versions.iterator();
+        while (it_v.next()) |entry| {
             const ga_val = entry.key_ptr.*;
             if (self.skip_siblings and self.reactor_poms.contains(ga_val)) continue;
+            
+            const depth = resolved_depths.get(ga_val) orelse {
+                if (self.isDebugMatch(ga_val, "")) std.debug.print("MIMIC: [FINALIZE-SKIP] {s} no depth in map\n", .{ga_val});
+                continue;
+            };
+            const scope = resolved_scopes.get(ga_val) orelse {
+                if (self.isDebugMatch(ga_val, "")) std.debug.print("MIMIC: [FINALIZE-SKIP] {s} no scope in map\n", .{ga_val});
+                continue;
+            };
+            const res_path = resolved_paths.get(ga_val) orelse "";
 
-            var it_p = std.mem.tokenizeAny(u8, ga_val, ":");
+            if (resolved_optionals.contains(ga_val) and depth > 0) continue;
+            if (!isScopeRelevant(scope, effective_scopes, depth == 0)) {
+                if (self.isDebugMatch(ga_val, "")) std.debug.print("MIMIC: [FINALIZE-SKIP] {s} scope {s} not relevant at depth {d}\n", .{ga_val, scope, depth});
+                continue;
+            }
+
+            var it_p = std.mem.splitScalar(u8, ga_val, ':');
             const gid = it_p.next() orelse "";
             const aid = it_p.next() orelse "";
-            const depth = resolved_depths.get(ga_val) orelse continue; 
-            const scope = resolved_scopes.get(ga_val) orelse "compile";
-            const res_path = resolved_paths.get(ga_val) orelse "";
-            
-            if (std.mem.eql(u8, gid, "org.mockito") or std.mem.eql(u8, gid, "org.junit.jupiter")) {
-                const relevant = isScopeRelevant(scope, effective_scopes, depth == 0);
-                std.debug.print("DEBUG: [FINAL-LIST] {s}:{s} v={s} scope={s} depth={} relevant={}\n", .{ gid, aid, entry.value_ptr.*, scope, depth, relevant });
-            }
 
-            if (resolved_optionals.contains(ga_val)) {
-                if (depth > 0) continue;
-            }
-
-            if (!isScopeRelevant(scope, effective_scopes, depth == 0)) continue;
-
-            try result_list.append(self.allocator, ArtifactDescriptor{ 
-                .group_id = try self.allocator.dupe(u8, gid), 
-                .artifact_id = try self.allocator.dupe(u8, aid), 
-                .version = try self.allocator.dupe(u8, entry.value_ptr.*), 
+            try res_list.append(self.allocator, .{
+                .group_id = try self.allocator.dupe(u8, gid),
+                .artifact_id = try self.allocator.dupe(u8, aid),
+                .version = try self.allocator.dupe(u8, entry.value_ptr.*),
                 .scope = try self.allocator.dupe(u8, scope),
-                .type = "jar",
-                .path = try self.allocator.dupe(u8, res_path)
+                .path = try self.allocator.dupe(u8, res_path),
             });
         }
-        return ResolutionResult{ .artifacts = try result_list.toOwnedSlice(self.allocator), .artifact_files = artifact_files, .errors = try errors.toOwnedSlice(self.allocator) };
+
+        return ResolutionResult{
+            .artifacts = try res_list.toOwnedSlice(self.allocator),
+            .artifact_files = artifact_files,
+            .errors = try errors.toOwnedSlice(self.allocator),
+        };
     }
-
-
 
     fn propagateScope(parent_scope: []const u8, child_scope_raw: []const u8) ?[]const u8 {
         const child_scope = if (child_scope_raw.len == 0) "compile" else child_scope_raw;
@@ -546,12 +639,7 @@ pub const MimicResolver = struct {
         if (std.mem.eql(u8, child_scope, "provided") or std.mem.eql(u8, child_scope, "test")) return null;
 
         if (std.mem.eql(u8, p_scope, "compile")) {
-            if (std.mem.eql(u8, child_scope, "compile")) return "compile";
-            if (std.mem.eql(u8, child_scope, "runtime")) return "runtime";
-            if (std.mem.eql(u8, child_scope, "provided")) return "provided";
-            if (std.mem.eql(u8, child_scope, "test")) return "test";
-            if (std.mem.eql(u8, child_scope, "system")) return "system";
-            return "compile";
+            return child_scope;
         }
         if (std.mem.eql(u8, p_scope, "runtime")) {
             if (std.mem.eql(u8, child_scope, "compile") or std.mem.eql(u8, child_scope, "runtime")) return "runtime";
@@ -592,78 +680,93 @@ pub const MimicResolver = struct {
             while (it_v.next()) |entry| { self.allocator.free(entry.key_ptr.*); self.allocator.free(entry.value_ptr.*); }
             project_versions.deinit();
         }
-        for (ctx.repositories.items) |repo| {
-            if (repo.url) |url| {
-                const normalized_url: []const u8 = if (std.mem.endsWith(u8, url, "/")) try self.allocator.dupe(u8, url) else try std.fmt.allocPrint(self.allocator, "{s}/", .{url});
-                var found = false;
-                for (self.repo_urls.items) |existing| {
-                    if (std.mem.eql(u8, existing, normalized_url)) {
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found) {
-                    try self.repo_urls.append(self.allocator, normalized_url);
-                } else {
-                    self.allocator.free(normalized_url);
-                }
-            }
-        }
+        
+        var cur_ctx: ?*context.PomContext = ctx;
+        while (cur_ctx) |c| {
+            for (c.model.dependencies) |dep| {
+                const gid = try c.resolveProperty(self.allocator, dep.group_id orelse "");
+                const aid = try c.resolveProperty(self.allocator, dep.artifact_id orelse "");
+                const ga = try std.fmt.allocPrint(self.allocator, "{s}:{s}", .{ gid, aid });
+                defer self.allocator.free(ga);
 
-        for (ctx.model.dependencies) |dep| {
-            const gid = try ctx.resolveProperty(self.allocator, dep.group_id orelse "");
-            const aid = try ctx.resolveProperty(self.allocator, dep.artifact_id orelse "");
-            const ga = try std.fmt.allocPrint(self.allocator, "{s}:{s}", .{ gid, aid });
-            var scope: []const u8 = "compile";
-            if (dep.scope) |s| {
-                scope = try ctx.resolveProperty(self.allocator, s);
-            } else if (ctx.getManagedScope(gid, aid)) |ms| {
-                scope = try ctx.resolveProperty(self.allocator, ms);
-            }
-            var v_raw = dep.version;
-            if (v_raw == null) v_raw = ctx.getManagedVersion(gid, aid);
-            if (v_raw == null) continue;
-            const v_prop = try ctx.resolveProperty(self.allocator, v_raw.?);
-            defer self.allocator.free(v_prop);
-            const v = try self.resolveVersionRange(ArtifactDescriptor{ .group_id = gid, .artifact_id = aid, .version = v_prop, .scope = "", .path = "" });
-            if (!project_versions.contains(ga)) {
+                std.debug.print("MIMIC: [DIRECT-DEP-SCAN] {s} in {s}\n", .{ ga, c.model.artifact_id orelse "???" });
+
+                if (project_versions.contains(ga)) {
+                    self.allocator.free(gid);
+                    self.allocator.free(aid);
+                    continue;
+                }
+
+                var scope: []const u8 = "compile";
+                if (dep.scope) |s| {
+                    scope = try c.resolveProperty(self.allocator, s);
+                } else if (ctx.getManagedScope(gid, aid)) |ms| {
+                    scope = try ctx.resolveProperty(self.allocator, ms);
+                }
+                
+                var v_raw = dep.version;
+                if (v_raw == null) v_raw = ctx.getManagedVersion(gid, aid);
+                if (v_raw == null) {
+                    self.allocator.free(gid);
+                    self.allocator.free(aid);
+                    self.allocator.free(scope);
+                    continue;
+                }
+                const v_prop = try c.resolveProperty(self.allocator, v_raw.?);
+                const v = try self.resolveVersionRange(ArtifactDescriptor{ .group_id = gid, .artifact_id = aid, .version = v_prop, .scope = "", .path = "" });
+                self.allocator.free(v_prop);
+
                 try project_versions.put(try self.allocator.dupe(u8, ga), try self.allocator.dupe(u8, v));
-                const relevant = isScopeRelevant(scope, effective_scopes, true);
-                if (relevant) {
-                    var res_exclusions = std.ArrayListUnmanaged(pom.Exclusion){};
+
+                if (true) {
+                    const is_opt = blk_opt: {
+                        const opt_raw = try c.resolveProperty(self.allocator, if (dep.optional) "true" else "false");
+                        defer self.allocator.free(opt_raw);
+                        break :blk_opt std.mem.eql(u8, opt_raw, "true");
+                    };
+
+                    var ex_list = std.ArrayListUnmanaged(pom.Exclusion){};
                     for (dep.exclusions) |ex| {
-                        const ex_gid = try ctx.resolveProperty(self.allocator, ex.group_id orelse "");
-                        const ex_aid = try ctx.resolveProperty(self.allocator, ex.artifact_id orelse "");
-                        try res_exclusions.append(self.allocator, .{ .group_id = ex_gid, .artifact_id = ex_aid });
+                        try ex_list.append(self.allocator, .{ 
+                            .group_id = try c.resolveProperty(self.allocator, ex.group_id orelse ""), 
+                            .artifact_id = try c.resolveProperty(self.allocator, ex.artifact_id orelse "") 
+                        });
                     }
-                    
-                    try initial_ads.append(self.allocator, ArtifactDescriptor{ 
+                    try initial_ads.append(self.allocator, .{ 
                         .group_id = gid, 
                         .artifact_id = aid, 
                         .version = v, 
                         .scope = scope, 
-                        .type = dep.type orelse "jar",
-                        .exclusions = try res_exclusions.toOwnedSlice(self.allocator),
+                        .classifier = if (dep.classifier) |cl| try c.resolveProperty(self.allocator, cl) else null,
+                        .type = try c.resolveProperty(self.allocator, dep.type orelse "jar"),
+                        .optional = is_opt,
+                        .exclusions = try ex_list.toOwnedSlice(self.allocator),
                         .path = try self.allocator.dupe(u8, ga)
                     });
-                } else self.allocator.free(v);
-            } else self.allocator.free(v);
-            self.allocator.free(ga);
+                } else {
+                    self.allocator.free(gid); self.allocator.free(aid); self.allocator.free(scope); self.allocator.free(v);
+                }
+            }
+            cur_ctx = c.parent;
         }
+        std.debug.print("MIMIC: [DIRECT-DEPS-COUNT] {d}\n", .{initial_ads.items.len});
         return try self.resolve(initial_ads.items, effective_scopes, ctx, project_versions);
     }
 
     fn isScopeRelevant(scope: []const u8, effective_scopes: []const []const u8, is_direct: bool) bool {
+        _ = is_direct;
         for (effective_scopes) |s| {
             if (std.mem.eql(u8, s, scope)) return true;
-            if (std.mem.eql(u8, s, "runtime")) {
-                if (std.mem.eql(u8, scope, "compile") or std.mem.eql(u8, scope, "runtime")) return true;
-            }
-            if (std.mem.eql(u8, s, "compile")) {
-                if (std.mem.eql(u8, scope, "compile") or (is_direct and std.mem.eql(u8, scope, "provided"))) return true;
-            }
-            if (std.mem.eql(u8, s, "test")) return true;
         }
+        // Nuance #37/4: provided/system are relevant if direct, BUT ONLY for compile-time resolution.
+        // If effective_scopes contains 'provided', it was explicitly requested (e.g. by -Dscope=provided or -Dscope=compile)
+        // Actually, Maven 'compile' scope resolution includes provided/system if direct.
+        // BUT 'runtime' scope resolution DOES NOT.
+        // We can detect 'compile' requested if 'compile' is in effective_scopes AND 'runtime' is NOT?
+        // No, both are often there.
+        // Better: check if 'provided' itself is in effective_scopes. 
+        // For -Dscope=runtime, we only have ["runtime", "compile"].
+        // For -Dscope=compile, Maven adds provided/system to the list.
         return false;
     }
 
@@ -742,7 +845,7 @@ pub const MimicResolver = struct {
                 if (n1 != n2) return if (n1 > n2) 1 else -1;
             } else {
                 const cmp = std.mem.order(u8, p1, p2);
-            if (cmp != .eq) return if (cmp == .gt) 1 else -1;
+                if (cmp != .eq) return if (cmp == .gt) 1 else -1;
             }
         }
     }
@@ -793,12 +896,16 @@ pub const MimicResolver = struct {
                 var p_ctx: ?*context.PomContext = if (p_ctx_res) |pc| pc else |_| null;
                 if (p_ctx == null) {
                     const gav_ad = ArtifactDescriptor{ .group_id = p_gid, .artifact_id = p_aid, .version = p_v, .type = "pom", .path = "" };
-                    const pf_rd = self.getOrDownload(gav_ad, "pom");
-                    if (pf_rd) |path_from_gav| {
+                    if (self.getOrDownload(gav_ad, "pom")) |path_from_gav| {
+                        defer self.allocator.free(path_from_gav);
                         const lp_res = self.loadPomContext(path_from_gav, gav_ad, reactor_properties);
-                        p_ctx = if (lp_res) |pc| pc else |_| null;
-                        self.allocator.free(path_from_gav);
-                    } else |_| {}
+                        p_ctx = if (lp_res) |pc| pc else |err| blk: {
+                             std.debug.print("MIMIC: [PARENT-ERROR] Failed to load from gav {s}:{s}:{s}: {}\n", .{ p_gid, p_aid, p_v, err });
+                             break :blk null;
+                        };
+                    } else |err| {
+                        std.debug.print("MIMIC: [PARENT-ERROR] Failed to download {s}:{s}:{s}: {}\n", .{ p_gid, p_aid, p_v, err });
+                    }
                 }
                 parent_ctx = p_ctx;
                 self.allocator.free(pp);
@@ -818,7 +925,6 @@ pub const MimicResolver = struct {
         const r_aid = if (ad) |a| a.artifact_id else model.artifact_id;
         const r_v = if (ad) |a| a.version else model.version;
         const ctx_ptr = try context.PomContext.init(self.allocator, model, parent_ctx, bom_resolver, r_gid, r_aid, r_v, reactor_properties, self.debug_match);
-        std.debug.print("DEBUG: [LOAD-CTX] {s}:{s}:{s} parent={s}\n", .{ r_gid orelse "", r_aid orelse "", r_v orelse "", if (parent_ctx) |p| p.model.artifact_id orelse "unknown" else "null" });
         try self.context_cache.put(try self.allocator.dupe(u8, path), ctx_ptr);
         return ctx_ptr;
     }
@@ -832,7 +938,6 @@ pub const MimicResolver = struct {
             const url = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ repo_url, rel_path });
             defer self.allocator.free(url);
             
-            // Use powershell for robust downloading on Windows
             const cmd = try std.fmt.allocPrint(self.allocator, "Invoke-WebRequest -Uri '{s}' -OutFile '{s}' -ErrorAction SilentlyContinue", .{ url, full_path });
             defer self.allocator.free(cmd);
             
@@ -841,7 +946,6 @@ pub const MimicResolver = struct {
             child.stderr_behavior = .Ignore;
             const term = child.spawnAndWait() catch continue;
             if (term == .Exited and term.Exited == 0) {
-                // std.debug.print("Downloaded (powershell): {s}\n", .{url});
                 return;
             }
         }
@@ -892,4 +996,180 @@ pub const MimicResolver = struct {
         };
         return full_path;
     }
+
+    fn getCacheFile(self: *MimicResolver, pom_file: []const u8, scopes: []const []const u8) ![]const u8 {
+        var sorted_scopes = std.ArrayListUnmanaged([]const u8){};
+        defer sorted_scopes.deinit(self.allocator);
+        try sorted_scopes.appendSlice(self.allocator, scopes);
+        std.mem.sort([]const u8, sorted_scopes.items, {}, struct {
+            fn lessThan(_: void, a: []const u8, b: []const u8) bool {
+                return std.mem.order(u8, a, b) == .lt;
+            }
+        }.lessThan);
+
+        var scope_key = std.ArrayListUnmanaged(u8){};
+        defer scope_key.deinit(self.allocator);
+        for (sorted_scopes.items, 0..) |s, i| {
+            if (i > 0) try scope_key.append(self.allocator, ',');
+            try scope_key.appendSlice(self.allocator, s);
+        }
+        if (scope_key.items.len == 0) try scope_key.appendSlice(self.allocator, "all");
+
+        const dir = std.fs.path.dirname(pom_file) orelse ".";
+        const base = std.fs.path.basename(pom_file);
+        return try std.fmt.allocPrint(self.allocator, "{s}{c}{s}.{s}.get-deps.v2.cache", .{ dir, std.fs.path.sep, base, scope_key.items });
+    }
+
+    fn loadCache(self: *MimicResolver, cache_file: []const u8, current_hash: i64) !?[]CachedDependency {
+        const file = std.fs.cwd().openFile(cache_file, .{}) catch return null;
+        defer file.close();
+
+        const content = try file.readToEndAlloc(self.allocator, 10 * 1024 * 1024);
+        defer self.allocator.free(content);
+
+        var iter = std.mem.splitScalar(u8, content, '\n');
+        var stored_hash: i64 = -1;
+
+        if (iter.next()) |first_line| {
+            const line = std.mem.trim(u8, first_line, " \t\r\n");
+            if (std.mem.startsWith(u8, line, "# pomHash=")) {
+                stored_hash = std.fmt.parseInt(i64, line[10..], 10) catch -1;
+                if (stored_hash != current_hash) return null;
+            } else if (current_hash != -1) {
+                return null;
+            } else {
+                iter = std.mem.splitScalar(u8, content, '\n');
+            }
+        }
+
+        var deps = std.ArrayListUnmanaged(CachedDependency){};
+        while (iter.next()) |raw_line| {
+            const line = std.mem.trim(u8, raw_line, " \t\r\n");
+            if (line.len == 0 or line[0] == '#') continue;
+
+            var parts = std.mem.splitScalar(u8, line, ':');
+            const gid = parts.next() orelse continue;
+            const aid = parts.next() orelse continue;
+            const ver = parts.next() orelse continue;
+            const classifier = parts.next() orelse continue;
+            const dtype = parts.next() orelse continue;
+            const scope = parts.next() orelse continue;
+            const opt_str = parts.next() orelse continue;
+            const ex_str = parts.next() orelse "";
+
+            var ex_list = std.ArrayListUnmanaged([]const u8){};
+            if (ex_str.len > 0) {
+                var ex_it = std.mem.splitScalar(u8, ex_str, ',');
+                while (ex_it.next()) |ex| try ex_list.append(self.allocator, try self.allocator.dupe(u8, ex));
+            }
+
+            try deps.append(self.allocator, .{
+                .group_id = try self.allocator.dupe(u8, gid),
+                .artifact_id = try self.allocator.dupe(u8, aid),
+                .version = try self.allocator.dupe(u8, ver),
+                .classifier = if (classifier.len > 0) try self.allocator.dupe(u8, classifier) else null,
+                .type = try self.allocator.dupe(u8, dtype),
+                .scope = try self.allocator.dupe(u8, scope),
+                .optional = std.mem.eql(u8, opt_str, "true"),
+                .exclusions = try ex_list.toOwnedSlice(self.allocator),
+            });
+        }
+        return try deps.toOwnedSlice(self.allocator);
+    }
+
+    fn saveCache(self: *MimicResolver, cache_file: []const u8, dependencies: []const CachedDependency, pom_hash: i64) !void {
+        _ = self;
+        const file = try std.fs.cwd().createFile(cache_file, .{});
+        defer file.close();
+        var write_buf: [4096]u8 = undefined;
+        var writer_struct = file.writer(&write_buf);
+        const writer = &writer_struct.interface;
+
+        if (pom_hash != -1) {
+            try writer.print("# pomHash={d}\n", .{pom_hash});
+        }
+
+        for (dependencies) |cd| {
+            try writer.print("{s}:{s}:{s}:{s}:{s}:{s}:{any}:", .{
+                cd.group_id,
+                cd.artifact_id,
+                cd.version,
+                cd.classifier orelse "",
+                cd.type,
+                cd.scope,
+                cd.optional,
+            });
+            for (cd.exclusions, 0..) |ex, i| {
+                if (i > 0) try writer.writeAll(",");
+                try writer.writeAll(ex);
+            }
+            try writer.writeAll("\n");
+        }
+    }
+
+    fn calculateWyhash64(self: *MimicResolver, path: []const u8) i64 {
+        const content = std.fs.cwd().readFileAlloc(self.allocator, path, 10 * 1024 * 1024) catch return 0;
+        defer self.allocator.free(content);
+        return @as(i64, @bitCast(std.hash.Wyhash.hash(0, content)));
+    }
 };
+
+test "load cache compatibility" {
+    const allocator = std.testing.allocator;
+    var res = MimicResolver.init(allocator, ".");
+    defer res.deinit();
+
+    const cache_content = 
+        \\# pomHash=12345
+        \\org.example:example-lib:1.0.0::jar:compile:false:ex.group:ex.artifact,other.group:other.artifact
+        \\org.test:test-tool:2.1.0:debug:exe:test:true:
+        \\
+    ;
+
+    const tmp_cache = "test_cache.v2.cache";
+    try std.fs.cwd().writeFile(.{ .sub_path = tmp_cache, .data = cache_content });
+    defer std.fs.cwd().deleteFile(tmp_cache) catch {};
+
+    const deps_opt = try res.loadCache(tmp_cache, 12345);
+    try std.testing.expect(deps_opt != null);
+    const deps = deps_opt.?;
+    defer {
+        for (deps) |d| d.deinit(allocator);
+        allocator.free(deps);
+    }
+
+    try std.testing.expectEqual(@as(usize, 2), deps.len);
+    
+    try std.testing.expectEqualStrings("org.example", deps[0].group_id);
+    try std.testing.expectEqualStrings("example-lib", deps[0].artifact_id);
+    try std.testing.expectEqualStrings("1.0.0", deps[0].version);
+    try std.testing.expect(deps[0].classifier == null);
+    try std.testing.expectEqualStrings("jar", deps[0].type);
+    try std.testing.expectEqualStrings("compile", deps[0].scope);
+    try std.testing.expectEqual(false, deps[0].optional);
+    try std.testing.expectEqual(@as(usize, 2), deps[0].exclusions.len);
+    try std.testing.expectEqualStrings("ex.group:ex.artifact", deps[0].exclusions[0]);
+    try std.testing.expectEqualStrings("other.group:other.artifact", deps[0].exclusions[1]);
+
+    try std.testing.expectEqualStrings("org.test", deps[1].group_id);
+    try std.testing.expectEqualStrings("test-tool", deps[1].artifact_id);
+    try std.testing.expectEqualStrings("2.1.0", deps[1].version);
+    try std.testing.expectEqualStrings("debug", deps[1].classifier.?);
+    try std.testing.expectEqualStrings("exe", deps[1].type);
+    try std.testing.expectEqualStrings("test", deps[1].scope);
+    try std.testing.expectEqual(true, deps[1].optional);
+    try std.testing.expectEqual(@as(usize, 0), deps[1].exclusions.len);
+}
+
+test "wyhash64 matching" {
+    const allocator = std.testing.allocator;
+    var res = MimicResolver.init(allocator, ".");
+    defer res.deinit();
+
+    const test_file = "test_hash.txt";
+    try std.fs.cwd().writeFile(.{ .sub_path = test_file, .data = "hello world" });
+    defer std.fs.cwd().deleteFile(test_file) catch {};
+
+    const hash = res.calculateWyhash64(test_file);
+    try std.testing.expect(hash != 0);
+}

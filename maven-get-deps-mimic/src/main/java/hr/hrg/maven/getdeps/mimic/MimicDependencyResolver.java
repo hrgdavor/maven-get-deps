@@ -1,6 +1,8 @@
 package hr.hrg.maven.getdeps.mimic;
 
 import hr.hrg.maven.getdeps.api.ArtifactDescriptor;
+import hr.hrg.maven.getdeps.api.CachedDependency;
+import hr.hrg.maven.getdeps.api.CacheManager;
 import hr.hrg.maven.getdeps.api.DependencyResolver;
 import hr.hrg.maven.getdeps.api.ResolutionResult;
 
@@ -26,7 +28,7 @@ public class MimicDependencyResolver implements DependencyResolver {
 
     private String debugFilter = null;
     private boolean skipSiblings = false;
-    private boolean noCache = true;
+    private boolean noCache = false;
 
     public void setDebugFilter(String debugFilter) {
         this.debugFilter = debugFilter;
@@ -192,11 +194,11 @@ public class MimicDependencyResolver implements DependencyResolver {
                 if (pomFile != null && pomFile.exists()) {
                     File absPomFile = pomFile.getAbsoluteFile();
                     boolean isReactor = reactorPomMap.containsValue(absPomFile);
-                    long currentHash = isReactor ? calculateWyhash64(absPomFile) : -1;
-                    File cacheFile = getCacheFile(pomFile, effectiveScopes);
+                    long currentHash = isReactor ? CacheManager.calculateWyhash64(absPomFile) : -1;
+                    File cacheFile = CacheManager.getCacheFile(pomFile, effectiveScopes);
                     List<CachedDependency> directDeps = null;
-                    if (!noCache) {
-                        directDeps = loadCache(cacheFile, currentHash);
+                    if (!noCache && !isReactor) {
+                        directDeps = CacheManager.loadCache(cacheFile, currentHash);
                         if (directDeps != null && isDebugMatch(ad.groupId(), ad.artifactId()))
                             System.err.println("MIMIC: [CACHE-HIT] " + ad + " (hash=" + currentHash + ")");
                     }
@@ -230,8 +232,8 @@ public class MimicDependencyResolver implements DependencyResolver {
                             }
                             directDeps.add(new CachedDependency(dGid, dAid, v, dS, dep.getClassifier(), dType, isOpt, depExclusions));
                         }
-                        if (!noCache) {
-                            saveCache(cacheFile, directDeps, currentHash);
+                        if (!noCache && !isReactor) {
+                            CacheManager.saveCache(cacheFile, directDeps, currentHash);
                         }
                     }
 
@@ -339,15 +341,36 @@ public class MimicDependencyResolver implements DependencyResolver {
 
     @Override
     public ResolutionResult resolve(Path pomPath, List<String> scopes) {
-        populateReactorMap();
         List<String> effectiveScopes = new ArrayList<>(scopes);
         if (effectiveScopes.contains("runtime") && !effectiveScopes.contains("compile"))
             effectiveScopes.add("compile");
         try {
-            System.err.println("MIMIC: Resolving POM: " + pomPath);
+            File pomFile = pomPath.toFile();
+            long currentPomHash = -1; // We'll calculate it only if needed (for reactor) or skip for cache check if not matching reactor
+            
+            populateReactorMap(); // Always scan reactor to identify siblings
             contexts.clear();
 
-            PomContext ctx = loadPomContext(pomPath.toFile(), Collections.emptyMap());
+            boolean isReactorRoot = reactorPomMap.containsValue(pomFile.getAbsoluteFile());
+
+            if (!noCache && !isReactorRoot) {
+                File cacheFile = CacheManager.getCacheFile(pomFile, effectiveScopes);
+                List<CachedDependency> cached = CacheManager.loadCache(cacheFile, currentPomHash);
+                if (cached != null) {
+                    List<ArtifactDescriptor> dependencies = new ArrayList<>();
+                    Map<ArtifactDescriptor, File> artifactFiles = new HashMap<>();
+                    for (CachedDependency cd : cached) {
+                        ArtifactDescriptor ad = cd.toArtifactDescriptor();
+                        dependencies.add(ad);
+                        File jarFile = getArtifactFile(ad, ad.type());
+                        if (jarFile != null && jarFile.exists())
+                            artifactFiles.put(ad, jarFile);
+                    }
+                    return new ResolutionResult(dependencies, artifactFiles, Collections.emptyList());
+                }
+            }
+
+            PomContext ctx = loadPomContext(pomFile, Collections.emptyMap());
             System.err.println("MIMIC: Root POM loaded. Managed entries: " + ctx.managedVersions.size());
 
             Map<String, String> projectScopes = new HashMap<>();
@@ -413,7 +436,15 @@ public class MimicDependencyResolver implements DependencyResolver {
                     System.err.println("MIMIC: [ROOTSKIP] " + dGid + ":" + dAid + " (no version)");
                 }
             }
-            return resolve(rootNodes, effectiveScopes, projectScopes, ctx, resolved, resolvedDepths, resolvedOptionals);
+            ResolutionResult finalResult = resolve(rootNodes, effectiveScopes, projectScopes, ctx, resolved, resolvedDepths, resolvedOptionals);
+            if (!noCache && !isReactorRoot && finalResult.errors().isEmpty()) {
+                File cacheFile = CacheManager.getCacheFile(pomFile, effectiveScopes);
+                List<CachedDependency> toCache = finalResult.dependencies().stream()
+                        .map(ad -> new CachedDependency(ad.groupId(), ad.artifactId(), ad.version(), ad.scope(), ad.classifier(), ad.type(), false, Collections.emptySet()))
+                        .collect(Collectors.toList());
+                CacheManager.saveCache(cacheFile, toCache, currentPomHash);
+            }
+            return finalResult;
         } catch (Exception e) {
             e.printStackTrace();
             return new ResolutionResult(Collections.emptyList(), Collections.emptyMap(), List.of(e.getMessage()));
@@ -911,90 +942,6 @@ public class MimicDependencyResolver implements DependencyResolver {
         }
     }
 
-    private long calculateWyhash64(File file) {
-        try {
-            byte[] bytes = Files.readAllBytes(file.toPath());
-            return Wyhash64.hash(0, bytes);
-        } catch (IOException e) {
-            return 0;
-        }
-    }
-
-    private File getCacheFile(File pomFile, List<String> scopes) {
-        List<String> sortedScopes = new ArrayList<>(scopes);
-        Collections.sort(sortedScopes);
-        String scopeKey = String.join(",", sortedScopes);
-        if (scopeKey.isEmpty())
-            scopeKey = "all";
-        return new File(pomFile.getParentFile(), pomFile.getName() + "." + scopeKey + ".get-deps.v2.cache");
-    }
-
-    private List<CachedDependency> loadCache(File cacheFile, long currentHash) {
-        if (!cacheFile.exists()) return null;
-        try (BufferedReader reader = new BufferedReader(new FileReader(cacheFile))) {
-            String firstLine = reader.readLine();
-            if (firstLine != null && firstLine.startsWith("# pomHash=")) {
-                long storedHash = Long.parseLong(firstLine.substring(10));
-                if (storedHash != currentHash) return null;
-            } else if (currentHash != -1) {
-                return null;
-            }
-
-            List<CachedDependency> dependencies = new ArrayList<>();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (line.startsWith("#")) continue;
-                String[] p = line.split(":", -1);
-                if (p.length >= 8) {
-                    Set<String> exclusions = new HashSet<>();
-                    if (!p[7].isEmpty()) {
-                        for (String ex : p[7].split(",")) {
-                            exclusions.add(ex);
-                        }
-                    }
-                    dependencies.add(new CachedDependency(p[0], p[1], p[2], p[5], p[3], p[4], "true".equals(p[6]), exclusions));
-                }
-            }
-            return dependencies;
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    private void saveCache(File cacheFile, List<CachedDependency> dependencies, long pomHash) {
-        try (PrintWriter writer = new PrintWriter(new FileWriter(cacheFile))) {
-            if (pomHash != -1) {
-                writer.println("# pomHash=" + pomHash);
-            }
-            for (CachedDependency cd : dependencies) {
-                writer.println(cd.groupId + ":" + cd.artifactId + ":" + cd.version + ":" +
-                        (cd.classifier != null ? cd.classifier : "") + ":" +
-                        (cd.type != null ? cd.type : "jar") + ":" +
-                        (cd.scope != null ? cd.scope : "compile") + ":" +
-                        cd.isOptional + ":" +
-                        String.join(",", cd.exclusions));
-            }
-        } catch (IOException e) {
-            System.err.println("Warning: Could not save cache: " + e.getMessage());
-        }
-    }
-
-    private static class CachedDependency {
-        final String groupId, artifactId, version, scope, classifier, type;
-        final boolean isOptional;
-        final Set<String> exclusions;
-
-        CachedDependency(String groupId, String artifactId, String version, String scope, String classifier, String type, boolean isOptional, Set<String> exclusions) {
-            this.groupId = groupId;
-            this.artifactId = artifactId;
-            this.version = version;
-            this.scope = scope;
-            this.classifier = classifier;
-            this.type = type;
-            this.isOptional = isOptional;
-            this.exclusions = exclusions;
-        }
-    }
 
     private void populateReactorMap() {
         if (reactorPaths.isEmpty() || !reactorPomMap.isEmpty())

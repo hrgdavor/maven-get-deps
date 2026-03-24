@@ -54,64 +54,23 @@ public class Main {
             List<String> mutableScopes = new ArrayList<>(scopes);
 
             ResolutionResult result = null;
+            long start = System.currentTimeMillis();
             if (useMimic) {
-                System.out.println("Using Mimic implementation (useCache=" + useCache + ")...");
                 MimicDependencyResolver mimic = new MimicDependencyResolver(new File(cachePath), new ArrayList<>());
-                if (reactorPath != null) {
-                    mimic.addReactorPath(new File(reactorPath));
-                }
+                if (reactorPath != null) mimic.addReactorPath(new File(reactorPath));
                 if (debugMatch != null) mimic.setDebugFilter(debugMatch);
                 if (cmd.hasOption("ss")) mimic.setSkipSiblings(true);
 
-                // Cold run
-                mimic.setNoCache(true); // Ensure no persistent cache for cold run (optional, depends on definition of "cold")
-                // Wait! If I want a REAL cold run, I should delete existing caches.
-                // But for now, just skip loading.
-
-                long startCold = System.currentTimeMillis();
-                result = mimic.resolve(Path.of(pomPath), scopes);
-                long endCold = System.currentTimeMillis();
-
-                // Warm run (with memory cache only)
-                long startHot = System.currentTimeMillis();
-                mimic.resolve(Path.of(pomPath), scopes);
-                long endHot = System.currentTimeMillis();
-
-                System.out.println("Performance Breakdown (Memory Cache):");
-                System.out.println("  Initial: " + (endCold - startCold) + "ms");
-                System.out.println("  Subsequent: " + (endHot - startHot) + "ms");
-
-                if (useCache) {
-                    mimic.setNoCache(false);
-                    long startPersistent = System.currentTimeMillis();
-                    mimic.resolve(Path.of(pomPath), scopes);
-                    long endPersistent = System.currentTimeMillis();
-                    System.out.println("  Persistent Cache (Warm): " + (endPersistent - startPersistent) + "ms");
-                }
-
+                mimic.setNoCache(!useCache);
+                result = mimic.resolve(Path.of(pomPath), mutableScopes);
             } else {
-                System.out.println("Using Maven implementation (useCache=" + useCache + ")...");
-
-                // Maven cold run (new instance)
-                MavenDependencyResolver mavenCold = new MavenDependencyResolver(cachePath);
-                if (reactorPath != null) mavenCold.addReactorPath(new File(reactorPath));
-
-                long startCold = System.currentTimeMillis();
-                result = mavenCold.resolve(Path.of(pomPath), scopes);
-                long endCold = System.currentTimeMillis();
-
-                // Maven hot run (reuse instance/session if possible, or new instance if !useCache)
-                MavenDependencyResolver mavenHot = !useCache ? new MavenDependencyResolver(cachePath) : mavenCold;
-                if (!useCache && reactorPath != null) mavenHot.addReactorPath(new File(reactorPath));
-
-                long startHot = System.currentTimeMillis();
-                mavenHot.resolve(Path.of(pomPath), scopes);
-                long endHot = System.currentTimeMillis();
-
-                System.out.println("Performance Breakdown:");
-                System.out.println("  Cold Cache: " + (endCold - startCold) + "ms");
-                System.out.println("  Hot Cache:  " + (endHot - startHot) + "ms");
+                MavenDependencyResolver maven = new MavenDependencyResolver(cachePath);
+                maven.setUseCache(useCache);
+                if (reactorPath != null) maven.addReactorPath(new File(reactorPath));
+                result = maven.resolve(Path.of(pomPath), mutableScopes);
             }
+            long end = System.currentTimeMillis();
+            System.out.println("Resolution completed in " + (end - start) + "ms (mimic=" + useMimic + ", useCache=" + useCache + ")");
 
             if (result != null) {
                 final ResolutionResult finalResult = result;

@@ -16,7 +16,10 @@
     <name>Maven Get Deps API</name>
 
     <dependencies>
-        <!-- No dependencies for API if possible -->
+        <dependency>
+            <groupId>hr.hrg</groupId>
+            <artifactId>wyhash</artifactId>
+        </dependency>
     </dependencies>
 
 </project>

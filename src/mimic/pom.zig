@@ -80,7 +80,8 @@ pub const PomModel = struct {
                     } else if (std.mem.eql(u8, name, "properties") or std.mem.eql(u8, name, "dependencies") 
                                or std.mem.eql(u8, name, "dependencyManagement") or std.mem.eql(u8, name, "project")
                                or std.mem.eql(u8, name, "groupId") or std.mem.eql(u8, name, "artifactId") or std.mem.eql(u8, name, "version")
-                               or std.mem.eql(u8, name, "modules") or std.mem.eql(u8, name, "module") or std.mem.eql(u8, name, "name") or std.mem.eql(u8, name, "packaging") or std.mem.eql(u8, name, "modelVersion") or std.mem.eql(u8, name, "build") or std.mem.eql(u8, name, "plugins") or std.mem.eql(u8, name, "plugin") or std.mem.eql(u8, name, "configuration") or std.mem.eql(u8, name, "relativePath") or std.mem.eql(u8, name, "exclusions")) {
+                               or std.mem.eql(u8, name, "modules") or std.mem.eql(u8, name, "module") or std.mem.eql(u8, name, "name") or std.mem.eql(u8, name, "packaging") or std.mem.eql(u8, name, "modelVersion") or std.mem.eql(u8, name, "build") or std.mem.eql(u8, name, "plugins") or std.mem.eql(u8, name, "plugin") or std.mem.eql(u8, name, "configuration") or std.mem.eql(u8, name, "relativePath") or std.mem.eql(u8, name, "exclusions")
+                               or std.mem.eql(u8, name, "profiles") or std.mem.eql(u8, name, "profile") or std.mem.eql(u8, name, "activation") or std.mem.eql(u8, name, "activeByDefault")) {
                         // Keep on path, will be popped by tag_close
                     } else if (path.len >= 3 and std.mem.eql(u8, path[path.len-2], "properties")) {
                          // Individual property tag - keep on path
@@ -113,21 +114,29 @@ pub const PomModel = struct {
         model.dependencies = try deps.toOwnedSlice(allocator);
         model.dependency_management = try m_deps.toOwnedSlice(allocator);
         model.repositories = try repos.toOwnedSlice(allocator);
+
+        if (model.artifact_id) |aid| {
+            if (std.mem.indexOf(u8, aid, "hibernate-core") != null) {
+                std.debug.print("MIMIC: [POM-SCAN] {s} found {d} deps, {d} managed\n", .{ aid, model.dependencies.len, model.dependency_management.len });
+                for (model.dependencies) |d| {
+                    std.debug.print("MIMIC: [POM-DEP] {s}:{s} v={s} s={s}\n", .{ d.group_id orelse "", d.artifact_id orelse "", d.version orelse "null", d.scope orelse "compile" });
+                }
+            }
+        }
         // // std.debug.print("DEBUG: Parsed model {s}: deps={} m_deps={} repos={}\n", .{ model.artifact_id orelse "unknown", model.dependencies.len, model.dependency_management.len, model.repositories.len });
         return model;
     }
 
     fn isInside(path: []const []const u8, name: []const u8) bool {
-        if (path.len < 2) return false;
-        // Project dependencies are project/dependencies/dependency (len 3, [1] == "dependencies")
-        // or project/profiles/profile/dependencies/dependency (len 5, [3] == "dependencies")
-        // Managed are project/dependencyManagement/dependencies/dependency (len 4, [1] == "dependencyManagement")
-        
+        if (path.len < 1) return false;
         for (path, 0..) |p, i| {
             if (std.mem.eql(u8, p, name)) {
                 // Check if we are inside build/plugins/plugin
+                // If the name we are looking for IS 'plugin' or 'plugins', we don't want to return false here.
+                if (std.mem.eql(u8, name, "plugin") or std.mem.eql(u8, name, "plugins")) return true;
+                
                 for (path[0..i]) |prev| {
-                    if (std.mem.eql(u8, prev, "plugins")) return false;
+                    if (std.mem.eql(u8, prev, "plugins") or std.mem.eql(u8, prev, "plugin")) return false;
                 }
                 return true;
             }

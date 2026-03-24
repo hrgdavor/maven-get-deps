@@ -309,11 +309,15 @@ fn cmdMimic(allocator: std.mem.Allocator, args: []const []const u8) !void {
 
     const start_ms = std.time.milliTimestamp();
     const result = try resolver.resolvePom(pom_path.?, scopes.items);
+    std.debug.print("DEBUG: result.artifacts.len = {d}\n", .{ result.artifacts.len });
     const end_ms = std.time.milliTimestamp();
     
+    std.debug.print("DEBUG: result.artifacts.len = {d}\n", .{result.artifacts.len});
+
     if (print_count) {
         std.debug.print("{d}\n", .{result.artifacts.len});
     } else {
+        if (result.artifacts.len > 0) {
         for (result.artifacts) |ad| {
             if (extended_format) {
                 std.debug.print("   {s}:{s}:{s}:{s}:{s} ({s})\n", .{ ad.group_id, ad.artifact_id, ad.type, ad.version, ad.scope, ad.path });
@@ -327,6 +331,7 @@ fn cmdMimic(allocator: std.mem.Allocator, args: []const []const u8) !void {
 
     for (result.errors) |err| {
         std.debug.print("Error: {s}\n", .{err});
+    }
     }
 }
 

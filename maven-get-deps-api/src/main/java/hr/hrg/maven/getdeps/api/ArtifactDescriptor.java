@@ -66,12 +66,14 @@ public class ArtifactDescriptor {
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder();
-        sb.append(groupId).append(":").append(artifactId).append(":").append(type);
+        sb.append(groupId).append(":").append(artifactId).append(":").append(version);
+        if (type != null && !"jar".equals(type)) {
+            sb.append(":").append(type);
+        }
         if (classifier != null && !classifier.isEmpty()) {
             sb.append(":").append(classifier);
         }
-        sb.append(":").append(version);
-        if (scope != null && !scope.isEmpty()) {
+        if (scope != null && !"compile".equals(scope)) {
             sb.append(":").append(scope);
         }
         return sb.toString();

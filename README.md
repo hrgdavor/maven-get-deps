@@ -63,6 +63,27 @@ Native binaries with zero dependencies, optimized for production runtime usage.
 
 ---
 
+## Performance Benchmarks
+
+Measured for `test/deps/complex1/core` (with reactor siblings in `test/deps/complex1`).
+Environment: Java 21, Windows 11, `mvnd` 1.0.0-m4.
+
+| Variant | Cold Run | Warm Run (Granular) |
+| :--- | :--- | :--- |
+| **Baseline 1 (`mvnd dependency:list`)** | ~2600ms | - |
+| **Baseline 2 (`mvnd dependency:copy-dep`)** | ~3400ms | - |
+| **Java Classic (Aether)** | ~2200ms | ~2400ms |
+| **Java Mimic (Optimized)** | ~1300ms | **~740ms** |
+| **Zig Mimic** | ~100ms | **~90ms** |
+
+*Cold Run* for `maven-get-deps` variants means a fresh run with no resolution cache.
+*Warm Run* means reusing granular resolution caches stored in the local `.m2` repository.
+This demonstrates that the cache is **reusable across all tool implementations** and independent of the project structure.
+Repository-based caching ensures that project reactor modules are always resolved fresh, while external dependencies are resolved from the repository-level cache.
+All runs were measured externally by a Bun script (`bun run scripts/perf_test.js`).
+
+---
+
 ## User Guides
 
 | Guide | Description |
