@@ -13,6 +13,25 @@
     <description>A tool and Maven plugin to resolve and copy dependencies to a standalone directory with interchangeable relative paths.</description>
     <url>https://github.com/hrgdavor/maven-get-deps</url>
 
+    <properties>
+        <revision>1.0.3</revision>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <resolver.version>1.9.18</resolver.version>
+        <maven.version>3.9.6</maven.version>
+        <jackson.version>2.20.1</jackson.version>
+    </properties>
+
+    <modules>
+        <module>maven-get-deps-api</module>
+        <module>maven-get-deps-maven</module>
+        <module>maven-get-deps-mimic</module>
+        <module>maven-get-deps-cli</module>
+        <module>maven-get-deps-maven-plugin</module>
+    </modules>
+
+
     <licenses>
         <license>
             <name>MIT License</name>
@@ -34,24 +53,6 @@
         <developerConnection>scm:git:ssh://github.com:hrgdavor/maven-get-deps.git</developerConnection>
         <url>http://github.com/hrgdavor/maven-get-deps/tree/main</url>
     </scm>
-
-    <modules>
-        <module>maven-get-deps-api</module>
-        <module>maven-get-deps-maven</module>
-        <module>maven-get-deps-mimic</module>
-        <module>maven-get-deps-cli</module>
-        <module>maven-get-deps-maven-plugin</module>
-    </modules>
-
-    <properties>
-        <revision>1.0.2</revision>
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <resolver.version>1.9.18</resolver.version>
-        <maven.version>3.9.6</maven.version>
-        <jackson.version>2.20.1</jackson.version>
-    </properties>
 
     <dependencyManagement>
         <dependencies>
