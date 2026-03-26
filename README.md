@@ -1,25 +1,49 @@
-## Philosophy: The Complexity of the Simple
+## What is here
 
-On the surface, "running an application" is simple. You run a command, and the process starts. However, doing this **right**—with security in mind, automated deployment, atomic versioning, health tracking, and the ability to revert instantly—is a much more involved engineering task. 
+Before you go down the rabbit hole in the next paragraphs and give up, there are parts of this repository that are easier to digest and some you may find interesting even if not trying to setup a java application somewhere.
 
-This project is dedicated to mastering that complexity by providing tools that turn these "simple" requirements into robust, automated realities.
+- checkout the [Interactive Download Guide](https://hrgdavor.github.io/maven-get-deps/download.html) for easier download. But if you really want, you can visit  [GitHub Releases](https://github.com/hrgdavor/maven-get-deps/releases/latest) 
+- if you want to dig into the source go to [Build & Development](doc/README.dev.md) for build instructions as there are interesting things to learn there like
+  - GraalVM native image generation(and metadata maintenance)
+  -  ZIG native apps building
 
-- browse [User Guides](#user-guides) for use cases and tool instructions
-- use [Interactive Download Guide](https://hrgdavor.github.io/maven-get-deps/download.html) instead of the [GitHub Releases](https://github.com/hrgdavor/maven-get-deps/releases/latest) where there are many and it is confusing
-- to dig even deeper go to [Build & Development](doc/README.dev.md) for build instructions, ZIG native,  GraalVM native image generation(and metadata maintenance).
+- learn more about [repository layout](doc/MAVEN_LAYOUT.md) is the backbone of java dependency management regardless if you use `mvn`, `gradle`, `mvnd`, `ivy`  
 
-## Why
+- browse User Guides for tool instructions and use cases you may find interesting
 
-This whole toolset started from looking to deploy a Java app to a remote server. You need your classes **and** all of your dependencies to start your app there. Usually, this means copying dependencies to a `lib/` folder alongside your JAR, or even worse, creating fat JARs. I find that kind of surrender to bloat unacceptable, I did it many times in the past and it just did not feel right.
+| Guide                                                       | Description                                                          |
+| ----------------------------------------------------------- | -------------------------------------------------------------------- |
+| [Deployment Philosophy](doc/README.usage-deploy.md)         | Deploy thin JARs + a shared dep folder. Avoid fat JARs.              |
+| [Systemd Daemon Guide](doc/README.systemd.md)               | Deploy a Java daemon with `systemd` and atomic versioning.           |
+| [Docker Integration (Dynamic)](doc/README.docker.md)        | Thin Docker images with a shared Maven cache.                        |
+| [Docker Integration (Static)](doc/README.static-docker.md)  | Bake fixed classpath into Docker at build time.                      |
+| [Maven Artifact Layout](doc/MAVEN_LAYOUT.md)                | Standard directory patterns and regex conversion examples (Java/JS). |
+
+## One Thing Led To Another
+
+This whole toolset started from looking to deploy a Java app to a remote server. On the surface, "running a Java application" is simple. You run a command, and the process starts. However, doing this **right**  brings so many things to consider.
+
+- security in mind (running the app is so easy, but too risky, and not running as root brings a bunch of issues to overcome)
+- install as a service
+- deploy versions (instead overwriting) and manage those versions
+- trigger version switch 
+- manage secrets
+
+This project is dedicated to mastering that complexity by providing tools and experiences that will be made along the way while tackling all of these things (the list may grow, and recommendations may change). This only a one way of doing things, and even if you do not like the specific path taken here, it can provide a windows into things you will likely also need to tackle.
+
+# The Bloat
+
+You need your classes **and** all of your dependencies to start your app there. Usually, this means copying dependencies to a `lib/` folder alongside your JAR, or even worse, creating fat JARs. I find that kind of surrender to bloat unacceptable, I did it many times in the past and it just did not feel right.
 
 With frameworks like Spring bloat and Hibernate, even a moderately sized app — say **500 KB** of *your* code — can carry **50–100 MB** of dependencies. That's a **200× size difference** every time you deploy a new version. And it gets worse with microservices: each service has less code but the same pile of libraries.
 
 The tools are available for multiple environments so you can be flexible to do many of the tasks even without maven or java installed. 
 
-> Maven repository is the backbone of java dependency management regardless if you use `mvn`, `gradle`, `mvnd`, `ivy` ... And has [convention that reliably maps artifact definition to folder path](doc/MAVEN_LAYOUT.md) in any maven repository. This convention is a great asset to working with java dependencies, and the tools here follow it, making the process compatible with your existing `~/.m2/repository` and maven central.
+> . This convention is a great asset to working with java dependencies, and the tools here follow it, making the process compatible with your existing `~/.m2/repository` and maven central.
 
 
-### You Really Should Optimize the Process
+
+# You Really Should Optimize The Deployment size
 
 The smarter approach is to separate your **application code** from its **dependencies**, and manage them independently:
 
@@ -83,14 +107,4 @@ Repository-based caching ensures that project reactor modules are always resolve
 All runs were measured externally by a Bun script (`bun run scripts/perf_test.js`).
 
 ---
-
-## User Guides
-
-| Guide                                                       | Description                                                          |
-| ----------------------------------------------------------- | -------------------------------------------------------------------- |
-| [Deployment Philosophy](doc/README.usage-deploy.md)         | Deploy thin JARs + a shared dep folder. Avoid fat JARs.              |
-| [Systemd Daemon Guide](doc/README.systemd.md)               | Deploy a Java daemon with `systemd` and atomic versioning.           |
-| [Docker Integration (Dynamic)](doc/README.docker.md)        | Thin Docker images with a shared Maven cache.                        |
-| [Docker Integration (Static)](doc/README.static-docker.md)  | Bake fixed classpath into Docker at build time.                      |
-| [Maven Artifact Layout](doc/MAVEN_LAYOUT.md)                | Standard directory patterns and regex conversion examples (Java/JS). |
 
