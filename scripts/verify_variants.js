@@ -1,5 +1,5 @@
 import { spawn, file as bunFile } from "bun";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 // Configuration
@@ -14,7 +14,44 @@ function getArg(param, defaultValue) {
 const POM = getArg("pom", "test/deps/complex1/core/pom.xml");
 const REACTOR = getArg("reactor", "test/deps/complex1");
 const BASELINE_CLEAN = getArg("baseline", "test/deps/complex1/core/baseline-clean.txt");
-const JAVA_JAR = getArg("javaJar", "maven-get-deps-cli/target/maven-get-deps-cli-1.0.2-cli.jar");
+
+function getCliVersion() {
+    const pomPath = join(WORKING_DIR, "maven-get-deps-cli", "pom.xml");
+    if (!existsSync(pomPath)) {
+        return "1.0.2";
+    }
+    const content = readFileSync(pomPath, "utf8");
+
+    // project direct version likely missing (inherited from parent), so check parent version.
+    const parentBlock = content.match(/<parent>([\s\S]*?)<\/parent>/);
+    if (parentBlock && parentBlock[1]) {
+        const parentVersionMatch = parentBlock[1].match(/<version>\s*([^<]+)\s*<\/version>/);
+        if (parentVersionMatch && parentVersionMatch[1]) {
+            const parentVersion = parentVersionMatch[1].trim();
+            const propMatch = parentVersion.match(/^\$\{([^}]+)\}$/);
+            if (propMatch) {
+                const prop = propMatch[1];
+                const rootPomPath = join(WORKING_DIR, "pom.xml");
+                if (existsSync(rootPomPath)) {
+                    const rootContent = readFileSync(rootPomPath, "utf8");
+                    const propRegex = new RegExp(`<${prop}>\\s*([^<]+)\\s*<\\/${prop}>`);
+                    const resolved = rootContent.match(propRegex);
+                    if (resolved && resolved[1]) {
+                        return resolved[1].trim();
+                    }
+                }
+            } else {
+                return parentVersion;
+            }
+        }
+    }
+
+    return "1.0.2";
+}
+
+const CLI_VERSION = getCliVersion();
+console.log('Detected CLI version:', CLI_VERSION);
+const JAVA_JAR = getArg("javaJar", `maven-get-deps-cli/target/maven-get-deps-cli-${CLI_VERSION}-cli.jar`);
 const ZIG_EXE = getArg("zigExe", "zig-out/bin/get_deps.exe");
 const JAVA = getArg("java", "C:\\Program Files\\Java\\jdk-21\\bin\\java.exe");
 const MVND = "D:\\programs\\mvnd\\bin\\mvnd.exe";

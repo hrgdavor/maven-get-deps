@@ -149,7 +149,7 @@ Maven follows a strict hierarchy for version selection:
 
 ### 21. Managed Transitive Overrides
 A version specified in `<dependencyManagement>` ALWAYS overrides any version encountered transitively, even if the transitive encounter is "closer" to the root. However, it DOES NOT override an explicit version in a direct dependency of the current project.
-
+- **New nuance:** when merging multiple `dependencyManagement` layers, a child POM’s own `dependencyManagement` entry must override the same GA from a parent/BOM, not be ignored. This is crucial for cases like `org.apache.logging.log4j:log4j-api` and `org.apache.commons:commons-lang3` where root-managed values (`2.25.3`, `3.18.0`) should win over imported BOM values (`2.24.3`, `3.17.0`).
 ### 22. Scope Propagation Matrix
 When resolving transitively, the scope of a child dependency is filtered by the scope of its parent:
 - **Parent: Compile** -> Child: Compile=Compile, Runtime=Runtime, Provided=null, Test=null.

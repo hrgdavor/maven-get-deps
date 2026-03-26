@@ -222,7 +222,7 @@ pub const MimicResolver = struct {
             } else if (std.mem.eql(u8, entry.name, "pom.xml")) {
                 const path = try std.fs.path.join(self.allocator, &[_][]const u8{ root, entry.name });
                 const content = try std.fs.cwd().readFileAlloc(self.allocator, path, 10 * 1024 * 1024);
-                
+
                 const model = try pom.PomModel.parse(self.allocator, content);
                 const gid = if (model.group_id) |g| g else (if (model.parent) |p| p.group_id orelse "" else "");
                 const aid = model.artifact_id orelse "";
@@ -235,13 +235,7 @@ pub const MimicResolver = struct {
         }
     }
 
-    pub fn resolve(
-        self: *MimicResolver, 
-        initial_artifacts: []const ArtifactDescriptor, 
-        effective_scopes: []const []const u8, 
-        root_ctx: ?*context.PomContext,
-        project_versions: std.StringHashMap([]const u8)
-    ) !ResolutionResult {
+    pub fn resolve(self: *MimicResolver, initial_artifacts: []const ArtifactDescriptor, effective_scopes: []const []const u8, root_ctx: ?*context.PomContext, project_versions: std.StringHashMap([]const u8)) !ResolutionResult {
         var artifact_files = std.StringHashMap([]const u8).init(self.allocator);
         var errors = std.ArrayListUnmanaged([]const u8){};
 
@@ -250,7 +244,10 @@ pub const MimicResolver = struct {
         var resolved_scopes = std.StringHashMap([]const u8).init(self.allocator);
         defer {
             var it = resolved_versions.iterator();
-            while (it.next()) |entry| { self.allocator.free(entry.key_ptr.*); self.allocator.free(entry.value_ptr.*); }
+            while (it.next()) |entry| {
+                self.allocator.free(entry.key_ptr.*);
+                self.allocator.free(entry.value_ptr.*);
+            }
             resolved_versions.deinit();
             var it_d = resolved_depths.iterator();
             while (it_d.next()) |entry| self.allocator.free(entry.key_ptr.*);
@@ -333,7 +330,7 @@ pub const MimicResolver = struct {
             const current = queue.items[head];
             head += 1;
             defer current.deinit();
-            
+
             const ad = current.ad;
             const ga = try std.fmt.allocPrint(arena, "{s}:{s}", .{ ad.group_id, ad.artifact_id });
 
@@ -357,9 +354,9 @@ pub const MimicResolver = struct {
                 }
 
                 if (self.isDebugMatch(ad.group_id, ad.artifact_id)) {
-                     std.debug.print("MIMIC: [PROMOTE] {s} from {s} to {s} (depth {d}->{d})\n", .{ ga, existing_scope, ad.scope, old_depth, current.depth });
+                    std.debug.print("MIMIC: [PROMOTE] {s} from {s} to {s} (depth {d}->{d})\n", .{ ga, existing_scope, ad.scope, old_depth, current.depth });
                 }
-                
+
                 const gop = try resolved_scopes.getOrPut(ga);
                 if (!gop.found_existing) {
                     gop.key_ptr.* = try self.allocator.dupe(u8, ga);
@@ -367,12 +364,12 @@ pub const MimicResolver = struct {
                     self.allocator.free(gop.value_ptr.*);
                 }
                 gop.value_ptr.* = try self.allocator.dupe(u8, ad.scope);
-                
+
                 // If we promoted from a 'blocking' scope (one not in target) to a relevant one,
                 // we might need to re-expand. Or if we promoted from provided to compile.
                 const was_relevant = isScopeRelevant(existing_scope, effective_scopes, old_depth == 0);
                 const is_now_relevant = isScopeRelevant(ad.scope, effective_scopes, current.depth == 0);
-                
+
                 if ((!was_relevant and is_now_relevant) or scope_promoted) {
                     if (self.isDebugMatch(ad.group_id, ad.artifact_id)) {
                         std.debug.print("MIMIC: [RE-EXPAND] {s} depth={d} reason={s}\n", .{ ga, current.depth, if (scope_promoted) "promotion" else "relevance" });
@@ -463,7 +460,7 @@ pub const MimicResolver = struct {
             const pf_res = self.getOrDownload(ad, "pom");
             if (pf_res) |pf| {
                 defer self.allocator.free(pf);
-                
+
                 var direct_deps: ?[]const CachedDependency = null;
                 const is_reactor = self.reactor_poms.get(ga) != null;
                 const pom_hash = if (is_reactor) self.calculateWyhash64(pf) else @as(i64, -1);
@@ -481,15 +478,15 @@ pub const MimicResolver = struct {
                     const ctx_res = self.loadPomContext(pf, ad, &self.reactor_properties);
                     if (ctx_res) |ctx| {
                         var deps_list = std.ArrayListUnmanaged(CachedDependency){};
-                        
-                        // We need to collect all dependencies including those from parents, 
+
+                        // We need to collect all dependencies including those from parents,
                         // matching Java's ctx.getEffectiveDependencies()
                         var head_ctx: ?*context.PomContext = ctx;
                         while (head_ctx) |cur| {
                             for (cur.model.dependencies) |dep| {
                                 const d_gid = try cur.resolveProperty(self.allocator, dep.group_id orelse "");
                                 const d_aid = try cur.resolveProperty(self.allocator, dep.artifact_id orelse "");
-                                
+
                                 var d_v_raw = dep.version;
                                 if (d_v_raw == null) d_v_raw = cur.getManagedVersion(d_gid, d_aid);
                                 if (d_v_raw == null) {
@@ -501,9 +498,9 @@ pub const MimicResolver = struct {
                                 const d_v = try self.resolveVersionRange(ArtifactDescriptor{ .group_id = d_gid, .artifact_id = d_aid, .version = d_v_prop, .scope = "", .path = "" });
                                 self.allocator.free(d_v_prop);
 
-                                 var d_s_raw = dep.scope;
-                                 if (d_s_raw == null) d_s_raw = cur.getManagedScope(d_gid, d_aid);
-                                 const d_s = try cur.resolveProperty(self.allocator, d_s_raw orelse "compile");
+                                var d_s_raw = dep.scope;
+                                if (d_s_raw == null) d_s_raw = cur.getManagedScope(d_gid, d_aid);
+                                const d_s = try cur.resolveProperty(self.allocator, d_s_raw orelse "compile");
 
                                 const is_opt = blk_opt: {
                                     const opt_raw = try cur.resolveProperty(self.allocator, if (dep.optional) "true" else "false");
@@ -535,7 +532,7 @@ pub const MimicResolver = struct {
                             }
                             head_ctx = cur.parent;
                         }
-                        
+
                         const final_deps = try deps_list.toOwnedSlice(self.allocator);
                         direct_deps = final_deps;
                         if (self.cache_enabled and !is_reactor) {
@@ -555,11 +552,12 @@ pub const MimicResolver = struct {
                         const ga_trans = try std.fmt.allocPrint(arena, "{s}:{s}", .{ cd.group_id, cd.artifact_id });
                         const gid_wild = try std.fmt.allocPrint(arena, "{s}:*", .{cd.group_id});
                         const aid_wild = try std.fmt.allocPrint(arena, "*:{s}", .{cd.artifact_id});
-                        if (current.exclusions.contains(ga_trans) or 
-                            current.exclusions.contains(gid_wild) or 
-                            current.exclusions.contains(aid_wild) or 
+                        if (current.exclusions.contains(ga_trans) or
+                            current.exclusions.contains(gid_wild) or
+                            current.exclusions.contains(aid_wild) or
                             current.exclusions.contains("*") or
-                            current.exclusions.contains("*.*")) {
+                            current.exclusions.contains("*.*"))
+                        {
                             continue;
                         }
 
@@ -569,7 +567,7 @@ pub const MimicResolver = struct {
 
                         var v = cd.version;
                         var final_s = s;
-                        
+
                         // Fix: integrate project_versions override
                         if (project_versions.get(ga_trans)) |p_version| {
                             v = p_version;
@@ -579,11 +577,11 @@ pub const MimicResolver = struct {
                             const should_override = true;
                             if (should_override) {
                                 if (rctx.getManagedVersion(cd.group_id, cd.artifact_id)) |mv| {
-                                const mv_res = try rctx.resolveProperty(arena, mv);
-                                const v_old = v;
-                                v = try self.resolveVersionRange(ArtifactDescriptor{ .group_id = cd.group_id, .artifact_id = cd.artifact_id, .version = mv_res, .scope = "", .path = "" });
-                                if (self.isDebugMatch(cd.group_id, cd.artifact_id)) std.debug.print("MIMIC: [MANAGED-VERSION] {s}:{s} override from {s} to {s} (via {s})\n", .{ cd.group_id, cd.artifact_id, v_old, v, mv_res });
-                            }
+                                    const mv_res = try rctx.resolveProperty(arena, mv);
+                                    const v_old = v;
+                                    v = try self.resolveVersionRange(ArtifactDescriptor{ .group_id = cd.group_id, .artifact_id = cd.artifact_id, .version = mv_res, .scope = "", .path = "" });
+                                    if (self.isDebugMatch(cd.group_id, cd.artifact_id)) std.debug.print("MIMIC: [MANAGED-VERSION] {s}:{s} override from {s} to {s} (via {s})\n", .{ cd.group_id, cd.artifact_id, v_old, v, mv_res });
+                                }
                                 if (rctx.getManagedScope(cd.group_id, cd.artifact_id)) |ms| {
                                     const ms_res = try rctx.resolveProperty(arena, ms);
                                     if (propagateScope(ad.scope, ms_res)) |ps| {
@@ -595,11 +593,11 @@ pub const MimicResolver = struct {
                         }
 
                         if (self.isDebugMatch(cd.group_id, cd.artifact_id)) {
-                             std.debug.print("MIMIC: [TRANS-EXPAND] {s}:{s}:{s} (s={s}, parent_s={s}) depth={d}\n", .{ cd.group_id, cd.artifact_id, v, final_s, ad.scope, current.depth + 1 });
+                            std.debug.print("MIMIC: [TRANS-EXPAND] {s}:{s}:{s} (s={s}, parent_s={s}) depth={d}\n", .{ cd.group_id, cd.artifact_id, v, final_s, ad.scope, current.depth + 1 });
                         }
 
                         const next_path = try std.fmt.allocPrint(self.allocator, "{s} -> {s}:{s}:{s}", .{ current.path, cd.group_id, cd.artifact_id, v });
-                        
+
                         var res_exclusions = std.ArrayListUnmanaged(pom.Exclusion){};
                         for (cd.exclusions) |ex_ga| {
                             var ex_it = std.mem.splitScalar(u8, ex_ga, ':');
@@ -636,12 +634,18 @@ pub const MimicResolver = struct {
                             self.allocator.free(trans_ad.type);
                             if (trans_ad.classifier) |c| self.allocator.free(c);
                             if (trans_ad.exclusions) |exs| {
-                                for (exs) |ex| { self.allocator.free(ex.group_id.?); self.allocator.free(ex.artifact_id.?); }
+                                for (exs) |ex| {
+                                    self.allocator.free(ex.group_id.?);
+                                    self.allocator.free(ex.artifact_id.?);
+                                }
                                 self.allocator.free(exs);
                             }
                             self.allocator.free(trans_ad.path);
                         } else {
-                            for (trans_ad.exclusions.?) |ex| { self.allocator.free(ex.group_id.?); self.allocator.free(ex.artifact_id.?); }
+                            for (trans_ad.exclusions.?) |ex| {
+                                self.allocator.free(ex.group_id.?);
+                                self.allocator.free(ex.artifact_id.?);
+                            }
                             self.allocator.free(trans_ad.exclusions.?);
                             self.allocator.free(trans_ad.path);
                         }
@@ -655,7 +659,7 @@ pub const MimicResolver = struct {
         while (it_v.next()) |entry| {
             const ga_val = entry.key_ptr.*;
             if (self.skip_siblings and self.reactor_poms.contains(ga_val)) continue;
-            
+
             const depth = resolved_depths.get(ga_val) orelse {
                 if (self.isDebugMatch(ga_val, "")) std.debug.print("MIMIC: [FINALIZE-SKIP] {s} no depth in map\n", .{ga_val});
                 continue;
@@ -668,7 +672,7 @@ pub const MimicResolver = struct {
 
             if (resolved_optionals.contains(ga_val) and depth > 0) continue;
             if (!isScopeRelevant(scope, effective_scopes, depth == 0)) {
-                if (self.isDebugMatch(ga_val, "")) std.debug.print("MIMIC: [FINALIZE-SKIP] {s} scope {s} not relevant at depth {d}\n", .{ga_val, scope, depth});
+                if (self.isDebugMatch(ga_val, "")) std.debug.print("MIMIC: [FINALIZE-SKIP] {s} scope {s} not relevant at depth {d}\n", .{ ga_val, scope, depth });
                 continue;
             }
 
@@ -739,10 +743,13 @@ pub const MimicResolver = struct {
         var project_versions = std.StringHashMap([]const u8).init(self.allocator);
         defer {
             var it_v = project_versions.iterator();
-            while (it_v.next()) |entry| { self.allocator.free(entry.key_ptr.*); self.allocator.free(entry.value_ptr.*); }
+            while (it_v.next()) |entry| {
+                self.allocator.free(entry.key_ptr.*);
+                self.allocator.free(entry.value_ptr.*);
+            }
             project_versions.deinit();
         }
-        
+
         var cur_ctx: ?*context.PomContext = ctx;
         while (cur_ctx) |c| {
             for (c.model.dependencies) |dep| {
@@ -765,7 +772,7 @@ pub const MimicResolver = struct {
                 } else if (ctx.getManagedScope(gid, aid)) |ms| {
                     scope = try ctx.resolveProperty(self.allocator, ms);
                 }
-                
+
                 var v_raw = dep.version;
                 if (v_raw == null) v_raw = ctx.getManagedVersion(gid, aid);
                 if (v_raw == null) {
@@ -789,24 +796,14 @@ pub const MimicResolver = struct {
 
                     var ex_list = std.ArrayListUnmanaged(pom.Exclusion){};
                     for (dep.exclusions) |ex| {
-                        try ex_list.append(self.allocator, .{ 
-                            .group_id = try c.resolveProperty(self.allocator, ex.group_id orelse ""), 
-                            .artifact_id = try c.resolveProperty(self.allocator, ex.artifact_id orelse "") 
-                        });
+                        try ex_list.append(self.allocator, .{ .group_id = try c.resolveProperty(self.allocator, ex.group_id orelse ""), .artifact_id = try c.resolveProperty(self.allocator, ex.artifact_id orelse "") });
                     }
-                    try initial_ads.append(self.allocator, .{ 
-                        .group_id = gid, 
-                        .artifact_id = aid, 
-                        .version = v, 
-                        .scope = scope, 
-                        .classifier = if (dep.classifier) |cl| try c.resolveProperty(self.allocator, cl) else null,
-                        .type = try c.resolveProperty(self.allocator, dep.type orelse "jar"),
-                        .optional = is_opt,
-                        .exclusions = try ex_list.toOwnedSlice(self.allocator),
-                        .path = try self.allocator.dupe(u8, ga)
-                    });
+                    try initial_ads.append(self.allocator, .{ .group_id = gid, .artifact_id = aid, .version = v, .scope = scope, .classifier = if (dep.classifier) |cl| try c.resolveProperty(self.allocator, cl) else null, .type = try c.resolveProperty(self.allocator, dep.type orelse "jar"), .optional = is_opt, .exclusions = try ex_list.toOwnedSlice(self.allocator), .path = try self.allocator.dupe(u8, ga) });
                 } else {
-                    self.allocator.free(gid); self.allocator.free(aid); self.allocator.free(scope); self.allocator.free(v);
+                    self.allocator.free(gid);
+                    self.allocator.free(aid);
+                    self.allocator.free(scope);
+                    self.allocator.free(v);
                 }
             }
             cur_ctx = c.parent;
@@ -890,12 +887,12 @@ pub const MimicResolver = struct {
             const s1 = it1.next();
             const s2 = it2.next();
             if (s1 == null and s2 == null) return 0;
-            
+
             // Maven rule: a version with a qualifier is smaller than the version without it.
             // e.g. 1.0.0-SNAPSHOT < 1.0.0
-            if (s1 == null) return -1; // v1 has ended, v2 has more (qualifier) -> v1 > v2? 
-                                       // Wait, if v1=1.0.0 and v2=1.0.0-SNAPSHOT: s1=null, s2=SNAPSHOT. 
-                                       // Maven says 1.0.0 > 1.0.0-SNAPSHOT.
+            if (s1 == null) return -1; // v1 has ended, v2 has more (qualifier) -> v1 > v2?
+            // Wait, if v1=1.0.0 and v2=1.0.0-SNAPSHOT: s1=null, s2=SNAPSHOT.
+            // Maven says 1.0.0 > 1.0.0-SNAPSHOT.
             if (s2 == null) return 1;
 
             const p1 = s1.?;
@@ -923,14 +920,23 @@ pub const MimicResolver = struct {
         var parent_ctx: ?*context.PomContext = null;
         if (model.parent) |p| {
             var p_path: ?[]const u8 = null;
-            const bom_resolver_dummy = context.BOMResolver{ .ptr = self, .load_fn = struct { fn load(_: *anyopaque, _: []const u8, _: []const u8, _: []const u8, _: ?*const std.StringHashMap([]const u8), _: ?[]const u8) anyerror!?*context.PomContext { return null; } }.load };
+            const bom_resolver_dummy = context.BOMResolver{ .ptr = self, .load_fn = struct {
+                fn load(_: *anyopaque, _: []const u8, _: []const u8, _: []const u8, _: ?*const std.StringHashMap([]const u8), _: ?[]const u8) anyerror!?*context.PomContext {
+                    return null;
+                }
+            }.load };
             var dummy_ctx = try context.PomContext.init(self.allocator, model, null, bom_resolver_dummy, null, null, null, reactor_properties, self.debug_match);
             defer dummy_ctx.deinit();
             const p_gid = try dummy_ctx.resolveProperty(self.allocator, p.group_id orelse "");
             const p_aid = try dummy_ctx.resolveProperty(self.allocator, p.artifact_id orelse "");
             const p_v = try dummy_ctx.resolveProperty(self.allocator, p.version orelse "");
             const p_rp_raw = try dummy_ctx.resolveProperty(self.allocator, p.relative_path orelse "");
-            defer { self.allocator.free(p_gid); self.allocator.free(p_aid); self.allocator.free(p_v); self.allocator.free(p_rp_raw); }
+            defer {
+                self.allocator.free(p_gid);
+                self.allocator.free(p_aid);
+                self.allocator.free(p_v);
+                self.allocator.free(p_rp_raw);
+            }
 
             if (p_rp_raw.len > 0) {
                 const dir = std.fs.path.dirname(path) orelse ".";
@@ -961,8 +967,8 @@ pub const MimicResolver = struct {
                         defer self.allocator.free(path_from_gav);
                         const lp_res = self.loadPomContext(path_from_gav, gav_ad, reactor_properties);
                         p_ctx = if (lp_res) |pc| pc else |err| blk: {
-                             std.debug.print("MIMIC: [PARENT-ERROR] Failed to load from gav {s}:{s}:{s}: {}\n", .{ p_gid, p_aid, p_v, err });
-                             break :blk null;
+                            std.debug.print("MIMIC: [PARENT-ERROR] Failed to load from gav {s}:{s}:{s}: {}\n", .{ p_gid, p_aid, p_v, err });
+                            break :blk null;
                         };
                     } else |err| {
                         std.debug.print("MIMIC: [PARENT-ERROR] Failed to download {s}:{s}:{s}: {}\n", .{ p_gid, p_aid, p_v, err });
@@ -972,15 +978,15 @@ pub const MimicResolver = struct {
                 self.allocator.free(pp);
             }
         }
-        const bom_resolver = context.BOMResolver{ .ptr = self, .load_fn = struct { 
-            fn load(ptr: *anyopaque, gid: []const u8, aid: []const u8, v: []const u8, inherited_props: ?*const std.StringHashMap([]const u8), debug_match: ?[]const u8) anyerror!?*context.PomContext { 
-                const self_ptr: *MimicResolver = @ptrCast(@alignCast(ptr)); 
-                const bom_ad = ArtifactDescriptor{ .group_id = gid, .artifact_id = aid, .version = v, .type = "pom", .path = "" }; 
-                const pf = try self_ptr.getOrDownload(bom_ad, "pom"); 
+        const bom_resolver = context.BOMResolver{ .ptr = self, .load_fn = struct {
+            fn load(ptr: *anyopaque, gid: []const u8, aid: []const u8, v: []const u8, inherited_props: ?*const std.StringHashMap([]const u8), debug_match: ?[]const u8) anyerror!?*context.PomContext {
+                const self_ptr: *MimicResolver = @ptrCast(@alignCast(ptr));
+                const bom_ad = ArtifactDescriptor{ .group_id = gid, .artifact_id = aid, .version = v, .type = "pom", .path = "" };
+                const pf = try self_ptr.getOrDownload(bom_ad, "pom");
                 defer self_ptr.allocator.free(pf);
                 _ = debug_match;
-                return try self_ptr.loadPomContext(pf, bom_ad, inherited_props); 
-            } 
+                return try self_ptr.loadPomContext(pf, bom_ad, inherited_props);
+            }
         }.load };
         const r_gid = if (ad) |a| a.group_id else model.group_id;
         const r_aid = if (ad) |a| a.artifact_id else model.artifact_id;
@@ -998,10 +1004,10 @@ pub const MimicResolver = struct {
         for (self.repo_urls.items) |repo_url| {
             const url = try std.fmt.allocPrint(self.allocator, "{s}{s}", .{ repo_url, rel_path });
             defer self.allocator.free(url);
-            
+
             const cmd = try std.fmt.allocPrint(self.allocator, "Invoke-WebRequest -Uri '{s}' -OutFile '{s}' -ErrorAction SilentlyContinue", .{ url, full_path });
             defer self.allocator.free(cmd);
-            
+
             var child = std.process.Child.init(&[_][]const u8{ "powershell", "-Command", cmd }, self.allocator);
             child.stdout_behavior = .Ignore;
             child.stderr_behavior = .Ignore;
@@ -1030,17 +1036,17 @@ pub const MimicResolver = struct {
         const ga = try std.fmt.allocPrint(self.allocator, "{s}:{s}", .{ ad_eff.group_id, ad_eff.artifact_id });
         defer self.allocator.free(ga);
         if (std.mem.eql(u8, ext_eff, "pom")) if (self.reactor_poms.get(ga)) |path| return try self.allocator.dupe(u8, path);
-        
+
         var ver = ad_eff.version;
         if (std.mem.startsWith(u8, ver, "[") or std.mem.startsWith(u8, ver, "(")) {
             if (std.mem.indexOfScalar(u8, ver, ',')) |comma| {
                 ver = ver[1..comma];
             }
         }
-        
+
         const rel_path_raw = try deps_format.formatPath(self.allocator, .{ .group_id = ad_eff.group_id, .artifact_id = ad_eff.artifact_id, .version = ver, .extension = ext_eff });
         defer self.allocator.free(rel_path_raw);
-        
+
         const rel_path = if (std.fs.path.sep == '\\') blk: {
             const copy = try self.allocator.dupe(u8, rel_path_raw);
             std.mem.replaceScalar(u8, copy, '/', '\\');
@@ -1049,9 +1055,9 @@ pub const MimicResolver = struct {
         defer if (std.fs.path.sep == '\\') self.allocator.free(rel_path);
 
         const full_path = try std.fs.path.join(self.allocator, &[_][]const u8{ self.local_repo, rel_path });
-        
-        std.fs.cwd().access(full_path, .{}) catch |err| { 
-            if (err == error.FileNotFound) { 
+
+        std.fs.cwd().access(full_path, .{}) catch |err| {
+            if (err == error.FileNotFound) {
                 if (self.local_only) {
                     self.allocator.free(full_path);
                     return error.ArtifactNotFound;
@@ -1061,8 +1067,8 @@ pub const MimicResolver = struct {
                     return error.ArtifactNotFound;
                 };
             } else {
-                 self.allocator.free(full_path);
-                 return err;
+                self.allocator.free(full_path);
+                return err;
             }
         };
         return full_path;
@@ -1199,7 +1205,7 @@ test "load cache compatibility" {
     var res = MimicResolver.init(allocator, ".");
     defer res.deinit();
 
-    const cache_content = 
+    const cache_content =
         \\# pomHash=12345
         \\org.example:example-lib:1.0.0::jar:compile:false:ex.group:ex.artifact,other.group:other.artifact
         \\org.test:test-tool:2.1.0:debug:exe:test:true:
@@ -1219,7 +1225,7 @@ test "load cache compatibility" {
     }
 
     try std.testing.expectEqual(@as(usize, 2), deps.len);
-    
+
     try std.testing.expectEqualStrings("org.example", deps[0].group_id);
     try std.testing.expectEqualStrings("example-lib", deps[0].artifact_id);
     try std.testing.expectEqualStrings("1.0.0", deps[0].version);

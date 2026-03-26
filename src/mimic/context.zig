@@ -57,7 +57,7 @@ pub const PomContext = struct {
         while (it_m.next()) |entry| {
             const val = entry.value_ptr.*;
             try self.properties.put(try allocator.dupe(u8, entry.key_ptr.*), try allocator.dupe(u8, val));
-            }
+        }
 
         // Project properties
         if (model.group_id) |g| try self.properties.put(try allocator.dupe(u8, "project.groupId"), try allocator.dupe(u8, g));
@@ -111,7 +111,7 @@ pub const PomContext = struct {
             const aid = try self.resolveProperty(allocator, dep.artifact_id orelse "");
             const v_raw = dep.version orelse "";
             const scope_raw = dep.scope;
-            
+
             const scope_resolved = if (scope_raw) |s| try self.resolveProperty(allocator, s) else try allocator.dupe(u8, "compile");
             defer allocator.free(scope_resolved);
 
@@ -134,21 +134,33 @@ pub const PomContext = struct {
                 const ga = try std.fmt.allocPrint(allocator, "{s}:{s}", .{ gid, aid });
                 defer allocator.free(ga);
                 if (v_raw.len > 0) {
-                    const ga_owned = try allocator.dupe(u8, ga);
-                    if (!self.managed_versions.contains(ga_owned)) {
+                    // Child/nearest dependencyManagement wins over parent imports (override parent value)
+                    if (self.managed_versions.contains(ga)) {
+                        if (self.managed_versions.get(ga)) |oldValue| {
+                            allocator.free(oldValue);
+                            const newValue = try allocator.dupe(u8, v_raw);
+                            // update map by removing and putting new to avoid invalidating internal refs
+                            _ = self.managed_versions.remove(ga);
+                            try self.managed_versions.put(try allocator.dupe(u8, ga), newValue);
+                        }
+                    } else {
+                        const ga_owned = try allocator.dupe(u8, ga);
                         const v_owned = try allocator.dupe(u8, v_raw);
                         try self.managed_versions.put(ga_owned, v_owned);
-                    } else {
-                        allocator.free(ga_owned); // Free if not used
                     }
                 }
                 if (scope_raw) |sr| {
-                    const ga_owned = try allocator.dupe(u8, ga); // Re-dupe for scope, or handle `ga_owned` differently
-                    if (!self.managed_scopes.contains(ga_owned)) {
+                    if (self.managed_scopes.contains(ga)) {
+                        if (self.managed_scopes.get(ga)) |oldScope| {
+                            allocator.free(oldScope);
+                            const newScope = try allocator.dupe(u8, sr);
+                            _ = self.managed_scopes.remove(ga);
+                            try self.managed_scopes.put(try allocator.dupe(u8, ga), newScope);
+                        }
+                    } else {
+                        const ga_owned = try allocator.dupe(u8, ga);
                         const s_owned = try allocator.dupe(u8, sr);
                         try self.managed_scopes.put(ga_owned, s_owned);
-                    } else {
-                        allocator.free(ga_owned); // Free if not used
                     }
                 }
             }
@@ -236,7 +248,7 @@ pub const PomContext = struct {
         const ga = std.fmt.allocPrint(self.allocator, "{s}:{s}", .{ gid, aid }) catch return null;
         defer self.allocator.free(ga);
         if (self.managed_scopes.get(ga)) |s| {
-             return s;
+            return s;
         }
         if (self.parent) |p| return p.getManagedScope(gid, aid);
         return null;
@@ -261,7 +273,7 @@ pub const PomContext = struct {
                     };
                     const end = end_rel + start;
                     const name = res[start..end];
-                    
+
                     if (try self.getPropertyValue(allocator, name)) |val| {
                         try temp.appendSlice(allocator, val);
                         allocator.free(val);
@@ -309,16 +321,16 @@ pub const PomContext = struct {
             if (self.model.parent) |p| if (p.group_id) |v| return try allocator.dupe(u8, v);
         } else if (std.mem.eql(u8, name, "project.parent.artifactId") or std.mem.eql(u8, name, "pom.parent.artifactId")) {
             if (self.model.parent) |p| if (p.artifact_id) |v| return try allocator.dupe(u8, v);
-        } 
-        
+        }
+
         if (self.properties.get(name)) |v| {
             return try allocator.dupe(u8, v);
         }
-        
+
         if (self.parent) |p| {
-             if (try p.getPropertyValue(allocator, name)) |v| {
+            if (try p.getPropertyValue(allocator, name)) |v| {
                 return v;
-             }
+            }
         }
 
         if (self.reactor_properties) |rp| {

@@ -1,6 +1,7 @@
 const std = @import("std");
 const deps_format = @import("deps_format.zig");
 const mimic = @import("mimic/resolver.zig");
+const pom = @import("mimic/pom.zig");
 
 pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -293,35 +294,44 @@ fn cmdMimic(allocator: std.mem.Allocator, args: []const []const u8) !void {
 
     if (reactor_paths.items.len == 0) {
         // Auto-detect reactor roots from pom parent chain (relativePath) if no explicit reactor is provided
-        var current_pom_path = pom_path.?.*;
+        var current_pom_path = pom_path.?;
         while (true) {
-            const pom_dir = try std.fs.path.dirname(allocator, current_pom_path);
+            const pom_dir = std.fs.path.dirname(current_pom_path) orelse break;
             const file_data = try std.fs.cwd().readFileAlloc(allocator, current_pom_path, 10 * 1024 * 1024);
             const model = try pom.PomModel.parse(allocator, file_data);
 
             // register this module root
             const root_str = pom_dir; // this is owned from path.dirname
             var seen = false;
-            for (reactor_paths.items) |rp| if (std.mem.eql(u8, rp, root_str)) { seen = true; break; }
+            for (reactor_paths.items) |rp| {
+                if (std.mem.eql(u8, rp, root_str)) {
+                    seen = true;
+                    break;
+                }
+            }
             if (!seen) try reactor_paths.append(root_str);
 
             const parent = model.parent;
             if (parent == null) break;
-            var relative_path = parent.? .relative_path orelse "../pom.xml";
+            var relative_path = parent.?.relative_path orelse "../pom.xml";
             if (relative_path.len == 0) relative_path = "../pom.xml";
-            const candidate_path = try std.fs.path.join(allocator, &[_][]const u8{pom_dir, relative_path});
+            const candidate_path = try std.fs.path.join(allocator, &[_][]const u8{ pom_dir, relative_path });
             var candidate_file = candidate_path;
-            const info = std.fs.cwd().stat(candidate_file);
-            if (info) |s| {
-                if (s.isDir()) {
-                    candidate_file = try std.fs.path.join(allocator, &[_][]const u8{candidate_file, "pom.xml"});
-                }
-            } else {
+            const info = std.fs.cwd().statFile(candidate_file) catch {
                 // If relativePath points to a directory or missing, attempt fallback to parent dir (if any)
-                candidate_file = try std.fs.path.join(allocator, &[_][]const u8{pom_dir, "../pom.xml"});
+                candidate_file = try std.fs.path.join(allocator, &[_][]const u8{ pom_dir, "../pom.xml" });
+                _ = std.fs.cwd().statFile(candidate_file) catch {
+                    break;
+                };
+                current_pom_path = candidate_file;
+                continue;
+            };
+            if (info.kind == .directory) {
+                candidate_file = try std.fs.path.join(allocator, &[_][]const u8{ candidate_file, "pom.xml" });
             }
-            const exists = std.fs.cwd().stat(candidate_file);
-            if (exists.isErr()) break;
+            _ = std.fs.cwd().statFile(candidate_file) catch {
+                break;
+            };
 
             current_pom_path = candidate_file;
             // continue and parse next parent
