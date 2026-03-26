@@ -281,22 +281,47 @@ public class MavenDependencyResolver implements DependencyResolver {
         return new ArtifactDescriptor(a.getGroupId(), a.getArtifactId(), a.getVersion(), scope, a.getClassifier(), a.getExtension());
     }
 
-    private void collectNodes(DependencyNode node, List<DependencyNode> parents, org.eclipse.aether.graph.DependencyFilter filter, List<DependencyNode> nodes, Set<String> seen) {
-        if (node.getDependency() != null && (filter == null || filter.accept(node, parents))) {
-            Artifact a = node.getArtifact();
-            if (a != null) {
-                String key = a.getGroupId() + ":" + a.getArtifactId() + ":" + a.getVersion() + ":" + a.getClassifier() + ":" + a.getExtension();
-                if (seen.add(key)) {
-                    nodes.add(node);
+    private void collectNodes(DependencyNode root, List<DependencyNode> dummy, org.eclipse.aether.graph.DependencyFilter filter, List<DependencyNode> nodes, Set<String> seen) {
+        if (root == null) return;
+        
+        class NodeWithPath {
+            DependencyNode node;
+            List<DependencyNode> parents;
+            NodeWithPath(DependencyNode n, List<DependencyNode> p) { this.node = n; this.parents = p; }
+        }
+
+        Queue<NodeWithPath> queue = new LinkedList<>();
+        queue.add(new NodeWithPath(root, new ArrayList<>()));
+
+        while (!queue.isEmpty()) {
+            NodeWithPath nwp = queue.poll();
+            DependencyNode node = nwp.node;
+            List<DependencyNode> parents = nwp.parents;
+            
+            if (node.getDependency() != null) {
+                Artifact a = node.getArtifact();
+                if (a != null) {
+                    String key = a.getGroupId() + ":" + a.getArtifactId() + ":" + a.getVersion() + ":" + a.getClassifier() + ":" + a.getExtension();
+                    if (seen.add(key)) {
+                        if (filter == null || filter.accept(node, parents)) {
+                            nodes.add(node);
+                        }
+                    }
                 }
             }
-        }
-        List<DependencyNode> nextParents = new ArrayList<>(parents);
-        nextParents.add(node);
-        for (DependencyNode child : node.getChildren()) {
-            collectNodes(child, nextParents, filter, nodes, seen);
+
+            List<DependencyNode> nextParents = new ArrayList<>(parents);
+            nextParents.add(node);
+            for (DependencyNode child : node.getChildren()) {
+                queue.add(new NodeWithPath(child, nextParents));
+            }
         }
     }
+    
+    // Note: The second argument 'parents' in calling sites is actually 'new ArrayList<>()' but passed to a list that was used as 'nodes' in my previous edit.
+    // Wait! Let's check call sites again.
+    // Line 94: collectNodes(collectResult.getRoot(), new ArrayList<>(), filter, nodes, new HashSet<>());
+    // 1: root, 2: parents (empty), 3: filter, 4: nodes (result list), 5: seen (result set)
 
     private static class ReactorWorkspaceReader implements WorkspaceReader {
         private final Map<String, File> gavToPom = new HashMap<>();

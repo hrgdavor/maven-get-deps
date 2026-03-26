@@ -135,23 +135,21 @@ pub const PomContext = struct {
                 defer allocator.free(ga);
                 if (v_raw.len > 0) {
                     const ga_owned = try allocator.dupe(u8, ga);
-                    const v_owned = try allocator.dupe(u8, v_raw);
-                    const gop = try self.managed_versions.getOrPut(ga_owned);
-                    if (gop.found_existing) {
-                        allocator.free(ga_owned);
-                        allocator.free(gop.value_ptr.*);
+                    if (!self.managed_versions.contains(ga_owned)) {
+                        const v_owned = try allocator.dupe(u8, v_raw);
+                        try self.managed_versions.put(ga_owned, v_owned);
+                    } else {
+                        allocator.free(ga_owned); // Free if not used
                     }
-                    gop.value_ptr.* = v_owned;
                 }
                 if (scope_raw) |sr| {
-                    const ga_owned = try allocator.dupe(u8, ga);
-                    const s_owned = try allocator.dupe(u8, sr);
-                    const gop = try self.managed_scopes.getOrPut(ga_owned);
-                    if (gop.found_existing) {
-                        allocator.free(ga_owned);
-                        allocator.free(gop.value_ptr.*);
+                    const ga_owned = try allocator.dupe(u8, ga); // Re-dupe for scope, or handle `ga_owned` differently
+                    if (!self.managed_scopes.contains(ga_owned)) {
+                        const s_owned = try allocator.dupe(u8, sr);
+                        try self.managed_scopes.put(ga_owned, s_owned);
+                    } else {
+                        allocator.free(ga_owned); // Free if not used
                     }
-                    gop.value_ptr.* = s_owned;
                 }
             }
             allocator.free(gid);

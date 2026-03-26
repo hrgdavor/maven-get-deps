@@ -5,7 +5,7 @@ On the surface, "running an application" is simple. You run a command, and the p
 This project is dedicated to mastering that complexity by providing tools that turn these "simple" requirements into robust, automated realities.
 
 - browse [User Guides](#user-guides) for use cases and tool instructions
--  use [Interactive Download Guide](https://hrgdavor.github.io/maven-get-deps/download.html) instead of the [GitHub Releases](https://github.com/hrgdavor/maven-get-deps/releases/latest) where there are many and it is confusing
+- use [Interactive Download Guide](https://hrgdavor.github.io/maven-get-deps/download.html) instead of the [GitHub Releases](https://github.com/hrgdavor/maven-get-deps/releases/latest) where there are many and it is confusing
 - to dig even deeper go to [Build & Development](doc/README.dev.md) for build instructions, ZIG native,  GraalVM native image generation(and metadata maintenance).
 
 ## Why
@@ -36,7 +36,7 @@ It will pay off in the long run, as it gives you **lean, fast releases**: a 500 
 
 Built for deep analysis and Maven ecosystem integration.
 
-- **maven-get-deps** ([CLI](doc/README.cli.md) /  [Maven Plugin](doc/README.maven-plugin.md))
+- **maven-get-deps** ([CLI](doc/README.cli.md) / [Maven Plugin](doc/README.maven-plugin.md))
     - Full **transitive dependency expansion**.
     - Dependency **size reporting** with incremental attribution [link](doc/README.usage-report.md).
     - Classpath generation (`.txt`, `.sh`, `.bat`) [link](doc/README.usage-classpath.md).
@@ -68,13 +68,13 @@ Native binaries with zero dependencies, optimized for production runtime usage.
 Measured for `test/deps/complex1/core` (with reactor siblings in `test/deps/complex1`).
 Environment: Java 21, Windows 11, `mvnd` 1.0.0-m4.
 
-| Variant | Cold Run | Warm Run (Granular) |
-| :--- | :--- | :--- |
-| **Baseline 1 (`mvnd dependency:list`)** | ~2600ms | - |
-| **Baseline 2 (`mvnd dependency:copy-dep`)** | ~3400ms | - |
-| **Java Classic (Aether)** | ~2200ms | ~2400ms |
-| **Java Mimic (Optimized)** | ~1300ms | **~740ms** |
-| **Zig Mimic** | ~100ms | **~90ms** |
+| Variant                                        | Cold Run | Warm Run (Granular) |
+| :--------------------------------------------- | :------- | :------------------ |
+| **Baseline 1 (`mvnd dependency:list`)**        | 1987ms   | -                   |
+| **Baseline 2 (`mvnd dependency:copy-dep`)**    | 1905ms   | -                   |
+| **Java Classic (Aether)**                      | 1889ms   | 1788ms              |
+| **Java Mimic (Optimized)**                     | 966ms    | **637ms**           |
+| **Zig Mimic**                                  | 199ms    | **74ms**            |
 
 *Cold Run* for `maven-get-deps` variants means a fresh run with no resolution cache.
 *Warm Run* means reusing granular resolution caches stored in the local `.m2` repository.
@@ -86,11 +86,11 @@ All runs were measured externally by a Bun script (`bun run scripts/perf_test.js
 
 ## User Guides
 
-| Guide | Description |
-|---|---|
-| [Deployment Philosophy](doc/README.usage-deploy.md) | Deploy thin JARs + a shared dep folder. Avoid fat JARs. |
-| [Systemd Daemon Guide](doc/README.systemd.md) | Deploy a Java daemon with `systemd` and atomic versioning. |
-| [Docker Integration (Dynamic)](doc/README.dynamic-docker.md) | Thin Docker images with a shared Maven cache. |
-| [Docker Integration (Static)](doc/README.static-docker.md) | Bake fixed classpath into Docker at build time. |
-| [Maven Artifact Layout](doc/MAVEN_LAYOUT.md) | Standard directory patterns and regex conversion examples (Java/JS). |
+| Guide                                                       | Description                                                          |
+| ----------------------------------------------------------- | -------------------------------------------------------------------- |
+| [Deployment Philosophy](doc/README.usage-deploy.md)         | Deploy thin JARs + a shared dep folder. Avoid fat JARs.              |
+| [Systemd Daemon Guide](doc/README.systemd.md)               | Deploy a Java daemon with `systemd` and atomic versioning.           |
+| [Docker Integration (Dynamic)](doc/README.docker.md)        | Thin Docker images with a shared Maven cache.                        |
+| [Docker Integration (Static)](doc/README.static-docker.md)  | Bake fixed classpath into Docker at build time.                      |
+| [Maven Artifact Layout](doc/MAVEN_LAYOUT.md)                | Standard directory patterns and regex conversion examples (Java/JS). |
 

@@ -21,6 +21,8 @@ public class MimicDependencyResolver implements DependencyResolver {
     private final File localRepo;
     private final List<File> reactorPaths = new ArrayList<>();
     private final Map<String, File> reactorPomMap = new HashMap<>();
+    private final Map<String, ManagedDependency> rootMgmt = new HashMap<>(); // GA -> ManagedDependency
+    private record ManagedDependency(String version, String scope) {}
     private final Map<File, PomModel> pomCache = new HashMap<>();
     private static final String CENTRAL_URL = "https://repo1.maven.org/maven2/";
     private final Set<String> repoUrls = new LinkedHashSet<>(Collections.singletonList(CENTRAL_URL));
@@ -99,14 +101,39 @@ public class MimicDependencyResolver implements DependencyResolver {
         List<Node> rootNodes = new ArrayList<>();
         Map<String, ArtifactDescriptor> resolved = new LinkedHashMap<>();
         Map<String, Integer> resolvedDepths = new HashMap<>();
+        Map<String, String> strongestScopes = new HashMap<>();
         for (ArtifactDescriptor ad : artifacts) {
             String ga = ad.groupId() + ":" + ad.artifactId();
             resolvedDepths.put(ga, 0);
             resolved.put(ga, ad);
+            strongestScopes.put(ga, ad.scope());
             rootNodes.add(new Node(ad, Collections.emptySet(), 0, null));
         }
-        return resolve(rootNodes, effectiveScopes, Collections.emptyMap(), null, resolved, resolvedDepths,
+        return resolve(rootNodes, effectiveScopes, Collections.emptyMap(), null, resolved, resolvedDepths, strongestScopes,
                 new HashSet<>());
+    }
+
+    public static boolean isScopeStronger(String newScope, String oldScope) {
+        return scopeOrder(newScope) > scopeOrder(oldScope);
+    }
+
+    private static int scopeOrder(String s) {
+        if (s == null)
+            return 0;
+        switch (s) {
+        case "compile":
+            return 10;
+        case "runtime":
+            return 5;
+        case "provided":
+            return 2;
+        case "system":
+            return 2;
+        case "test":
+            return 1;
+        default:
+            return 0;
+        }
     }
 
     public static String propagateScope(String parentScope, String childScope) {
@@ -152,7 +179,7 @@ public class MimicDependencyResolver implements DependencyResolver {
 
     private ResolutionResult resolve(List<Node> rootNodes, List<String> effectiveScopes,
             Map<String, String> projectScopes, PomContext rootCtx, Map<String, ArtifactDescriptor> resolved,
-            Map<String, Integer> resolvedDepths, Set<String> resolvedOptionals) {
+            Map<String, Integer> resolvedDepths, Map<String, String> strongestScopes, Set<String> resolvedOptionals) {
         List<ArtifactDescriptor> resultList = new ArrayList<>();
         Map<ArtifactDescriptor, File> artifactFiles = new HashMap<>();
         List<String> errors = new ArrayList<>();
@@ -170,15 +197,31 @@ public class MimicDependencyResolver implements DependencyResolver {
 
             if (resolvedDepths.containsKey(ga)) {
                 int oldDepth = resolvedDepths.get(ga);
-                if (current.depth > oldDepth)
-                    continue;
-                // If the currently registered descriptor for this depth has a stronger scope,
-                // cancel
                 ArtifactDescriptor oldAd = resolved.get(ga);
-                if (current.depth == oldDepth && oldAd != ad
-                        && scopeStrength(ad.scope()) < scopeStrength(oldAd.scope())) {
+                boolean currentScopeStronger = isScopeStronger(ad.scope(), oldAd.scope());
+
+                if (current.depth > oldDepth && !currentScopeStronger) {
+                    if (isDebugMatch(ad.groupId(), ad.artifactId())) {
+                        System.err.println("MIMIC: [SKIP-DEEP] " + ga + " oldDepth=" + oldDepth + " oldScope=" + oldAd.scope() + " currentDepth=" + current.depth + " currentScope=" + ad.scope());
+                    }
                     continue;
                 }
+
+                // If same depth and currently registered descriptor is stronger, cancel.
+                if (current.depth == oldDepth && oldAd != ad
+                        && scopeStrength(ad.scope()) < scopeStrength(oldAd.scope())) {
+                    if (isDebugMatch(ad.groupId(), ad.artifactId())) {
+                        System.err.println("MIMIC: [SKIP-SAME] " + ga + " oldScope=" + oldAd.scope() + " currentScope=" + ad.scope());
+                    }
+                    continue;
+                }
+            }
+
+            // If this node is provided/test and we're resolving compile/runtime, don't expand further.
+            if (("provided".equals(ad.scope()) || "test".equals(ad.scope()))
+                    && !effectiveScopes.contains("provided")
+                    && !effectiveScopes.contains("test")) {
+                continue;
             }
 
             resolvedDepths.put(ga, current.depth);
@@ -206,23 +249,54 @@ public class MimicDependencyResolver implements DependencyResolver {
                     if (directDeps == null) {
                         directDeps = new ArrayList<>();
                         PomContext ctx = loadPomContext(pomFile, Collections.emptyMap());
+                        if ("jakarta.enterprise".equals(ad.groupId()) && "jakarta.enterprise.cdi-api".equals(ad.artifactId())
+                                && isDebugMatch(ad.groupId(), ad.artifactId())) {
+                            System.err.println("MIMIC: [DEBUG-CDI-DEPS] resolving cdi-api dependencies...");
+                        }
                         for (PomModel.Dependency dep : ctx.getEffectiveDependencies()) {
                             String dGid = ctx.resolveProperty(dep.getGroupId());
                             String dAid = ctx.resolveProperty(dep.getArtifactId());
-                            
-                            // Apply HIS OWN dependency management and properties
-                            String libManagedV = ctx.getManagedVersion(dGid, dAid);
-                            String libManagedS = ctx.getManagedScope(dGid, dAid);
+                            if (dGid == null || dAid == null) continue;
+                            if ("jakarta.enterprise".equals(ad.groupId()) && "jakarta.enterprise.cdi-api".equals(ad.artifactId())
+                                    && isDebugMatch(ad.groupId(), ad.artifactId())) {
+                                System.err.println("MIMIC: [DEBUG-CDI-DEP] dep=" + dGid + ":" + dAid + " scope=" + dep.getScope() + " version=" + dep.getVersion());
+                            }
+
                             String rawV = dep.getVersion();
                             String rawS = dep.getScope();
-                            String dV = ctx.resolveProperty(rawV != null ? rawV : libManagedV);
-                            String dS = ctx.resolveProperty(rawS != null ? rawS : (libManagedS != null ? libManagedS : "compile"));
                             
-                            if (dV == null) continue;
+                            // Check root management FIRST (global priority)
+                            String gaTrans = dGid + ":" + dAid;
+                            ManagedDependency rootManagedDep = rootMgmt.get(gaTrans);
+
+                            String libManagedV = ctx.getManagedVersion(dGid, dAid);
+                            String libManagedS = ctx.getManagedScope(dGid, dAid);
+
+                            String dV = ctx.resolveProperty(rootManagedDep != null ? rootManagedDep.version() : (rawV != null ? rawV : (libManagedV != null ? libManagedV : null)));
+                            String dS;
+                            if (rawS != null && !rawS.isBlank()) {
+                                dS = ctx.resolveProperty(rawS);
+                            } else if (rootManagedDep != null && rootManagedDep.scope() != null) {
+                                dS = ctx.resolveProperty(rootManagedDep.scope());
+                            } else if (libManagedS != null) {
+                                dS = ctx.resolveProperty(libManagedS);
+                            } else {
+                                dS = "compile";
+                            }
+                            
+                            boolean isOpt = "true".equals(ctx.resolveProperty(dep.getOptional()));
+                            if (dV == null) {
+                                if (dAid.equals("log4j-api")) {
+                                    System.err.println("MIMIC: [DEBUG-LOG4J] Missing version for log4j-api! rawV=" + rawV + " rootMV=" + (rootManagedDep != null ? rootManagedDep.version() : "null") + " libMV=" + libManagedV);
+                                }
+                                continue;
+                            }
+                            if (dAid.equals("log4j-api")) {
+                                System.err.println("MIMIC: [DEBUG-LOG4J] Found log4j-api v=" + dV + " s=" + dS + " opt=" + isOpt);
+                            }
 
                             String v = resolveVersionRange(new ArtifactDescriptor(dGid, dAid, dV, null, null, null));
                             String dType = dep.getType() == null ? "jar" : dep.getType();
-                            boolean isOpt = "true".equals(ctx.resolveProperty(dep.getOptional()));
                             
                             Set<String> depExclusions = new HashSet<>();
                             if (dep.getExclusions() != null) {
@@ -254,36 +328,49 @@ public class MimicDependencyResolver implements DependencyResolver {
 
                         // 5. Propagate scope from parent to child
                         String s = propagateScope(ad.scope(), sRaw);
+                        if (cd.groupId.equals("jakarta.inject") && cd.artifactId.equals("jakarta.inject-api")) {
+                            System.err.println("MIMIC: [DEBUG-INJECT] parent=" + ad.groupId() + ":" + ad.artifactId() + " parentScope=" + ad.scope() + " child=" + cd.groupId + ":" + cd.artifactId + " childRawScope=" + sRaw + " resolvedScope=" + s + " nextDepth=" + (current.depth + 1) + " oldDepth=" + resolvedDepths.getOrDefault(gaTrans, -1));
+                        }
                         if (s == null) continue;
 
+                        String strongestScope = strongestScopes.get(gaTrans);
+                        if (strongestScope == null || isScopeStronger(s, strongestScope)) {
+                            strongestScopes.put(gaTrans, s);
+                        }
+
                         int nextDepth = current.depth + 1;
-                        boolean alreadyHaveBetter = false;
                         if (resolvedDepths.containsKey(gaTrans)) {
                             int oldDepth = resolvedDepths.get(gaTrans);
-                            ArtifactDescriptor oldAd = resolved.get(gaTrans);
+                            String oldScope = resolved.get(gaTrans).scope();
                             boolean oldIsOpt = resolvedOptionals.contains(gaTrans);
+                            
+                            boolean scopePromoted = isScopeStronger(s, oldScope);
+                            boolean optionalPromoted = (oldIsOpt && !cd.isOptional);
+                            
+                            if (isDebugMatch(cd.groupId, cd.artifactId)) {
+                                System.err.println("MIMIC: [CANDIDATE] " + gaTrans + " oldDepth=" + oldDepth + " oldScope=" + oldScope + " newDepth=" + nextDepth + " newScope=" + s + " scopePromoted=" + scopePromoted + " optionalPromoted=" + optionalPromoted);
+                            }
 
-                            if (oldDepth <= nextDepth) {
-                                boolean shouldPromote = scopeStrength(s) > scopeStrength(oldAd.scope());
-                                if (oldDepth == 0 && "provided".equals(oldAd.scope()) && ("compile".equals(s) || "runtime".equals(s))) {
-                                    shouldPromote = false;
+                            if (nextDepth > oldDepth) {
+                                // Direct declarations (depth 0) always win over any transitive.
+                                // Maven nearest-wins is absolute: a project's own declared dep
+                                // cannot be overridden by a deeper transitive, regardless of scope.
+                                if (oldDepth == 0) continue;
+                                // Nearest wins by default. However, a deeper candidate can override
+                                // if it has a stronger scope (e.g., compile vs runtime), or if it
+                                // de-optionalizes an optional match.
+                                boolean allowOverrule = scopePromoted || (optionalPromoted && (scopePromoted || s.equals(oldScope)));
+                                if (!allowOverrule) {
+                                    continue;
                                 }
-
-                                if (oldAd != null && shouldPromote) {
-                                    ArtifactDescriptor promoted = new ArtifactDescriptor(oldAd.groupId(), oldAd.artifactId(), oldAd.version(), s, oldAd.classifier(), oldAd.type(), oldAd.path());
-                                    resolved.put(gaTrans, promoted);
-                                    if (isDebugMatch(cd.groupId, cd.artifactId))
-                                        System.err.println("MIMIC: [SCOPE-PROMOTE] " + gaTrans + " from " + oldAd.scope() + " to " + s + " at depth " + nextDepth + " via " + ad.groupId() + ":" + ad.artifactId());
-                                }
-
-                                if (oldDepth < nextDepth) {
-                                    if (!oldIsOpt) alreadyHaveBetter = true;
-                                } else if (oldDepth == nextDepth) {
-                                    if (!(oldIsOpt && !cd.isOptional)) alreadyHaveBetter = true;
-                                }
+                            } else if (nextDepth == oldDepth) {
+                                if (!scopePromoted && !optionalPromoted) continue;
+                            }
+                            
+                            if (isDebugMatch(cd.groupId, cd.artifactId)) {
+                                System.err.println("MIMIC: [PROMOTE] " + gaTrans + " from " + oldScope + " to " + s + " (depth " + oldDepth + "->" + nextDepth + ")");
                             }
                         }
-                        if (alreadyHaveBetter) continue;
 
                         String nextPath = current.path + " -> " + cd.groupId + ":" + cd.artifactId + ":" + v;
                         ArtifactDescriptor transitive = new ArtifactDescriptor(cd.groupId, cd.artifactId, v, s, cd.classifier, cd.type, nextPath);
@@ -316,6 +403,33 @@ public class MimicDependencyResolver implements DependencyResolver {
             }
         }
 
+        for (Map.Entry<String, ArtifactDescriptor> entry : new ArrayList<>(resolved.entrySet())) {
+            String ga = entry.getKey();
+            ArtifactDescriptor current = entry.getValue();
+            String strongestScope = strongestScopes.get(ga);
+            if (strongestScope == null || !isScopeStronger(strongestScope, current.scope())) {
+                continue;
+            }
+            // Use resolvedDepths (not current.depth()) — ArtifactDescriptor.depth defaults to 1
+            // and is only set via setDepth(). Depth-0 direct provided/test deps are never
+            // enqueued, so their descriptor depth is never updated from default.
+            if (resolvedDepths.getOrDefault(ga, 1) == 0 && ("provided".equals(current.scope()) || "test".equals(current.scope()))) {
+                continue;
+            }
+
+            ArtifactDescriptor promoted = new ArtifactDescriptor(
+                    current.groupId(),
+                    current.artifactId(),
+                    current.version(),
+                    strongestScope,
+                    current.classifier(),
+                    current.type(),
+                    current.path());
+            promoted.setDepth(current.depth());
+            resolved.put(ga, promoted);
+        }
+
+        // Debug helper: check final resolved map for tricky conflict candidates
         for (ArtifactDescriptor adResolved : resolved.values()) {
             String ga = adResolved.groupId() + ":" + adResolved.artifactId();
             // Nuance 30: Reactor Module Inclusion (optional skipping)
@@ -347,8 +461,13 @@ public class MimicDependencyResolver implements DependencyResolver {
         try {
             File pomFile = pomPath.toFile();
             long currentPomHash = -1; // We'll calculate it only if needed (for reactor) or skip for cache check if not matching reactor
-            
-            populateReactorMap(); // Always scan reactor to identify siblings
+
+            // Auto-detect reactor root from `pom.xml` parent chain when no explicit reactor path provided.
+            if (reactorPaths.isEmpty()) {
+                discoverReactorRoots(pomFile);
+            }
+
+            populateReactorMap(); // Scan reactor to identify siblings
             contexts.clear();
 
             boolean isReactorRoot = reactorPomMap.containsValue(pomFile.getAbsoluteFile());
@@ -371,12 +490,19 @@ public class MimicDependencyResolver implements DependencyResolver {
             }
 
             PomContext ctx = loadPomContext(pomFile, Collections.emptyMap());
-            System.err.println("MIMIC: Root POM loaded. Managed entries: " + ctx.managedVersions.size());
+            rootMgmt.clear();
+            ctx.managedVersions.keySet().forEach(ga -> {
+                String[] parts = ga.split(":");
+                String resV = ctx.getManagedVersion(parts[0], parts[1]);
+                String resS = ctx.getManagedScope(parts[0], parts[1]);
+                rootMgmt.put(ga, new ManagedDependency(resV, resS));
+            });
 
             Map<String, String> projectScopes = new HashMap<>();
             List<Node> rootNodes = new ArrayList<>();
             Map<String, ArtifactDescriptor> resolved = new HashMap<>();
             Map<String, Integer> resolvedDepths = new HashMap<>();
+            Map<String, String> strongestScopes = new HashMap<>();
             Set<String> resolvedOptionals = new HashSet<>();
 
             for (PomModel.Dependency dep : ctx.getEffectiveDependencies()) {
@@ -407,6 +533,10 @@ public class MimicDependencyResolver implements DependencyResolver {
                     // scopes too!
                     resolvedDepths.put(ga, 0);
                     resolved.put(ga, ad);
+                    strongestScopes.put(ga, s);
+                    if ("jakarta.websocket".equals(dGid) || "jakarta.xml.bind".equals(dGid)) {
+                        System.err.println("MIMIC: [ROOT-RESOLVED] " + ga + " scope=" + s);
+                    }
                     boolean isOpt = "true".equals(dep.getOptional());
                     if (isOpt) {
                         resolvedOptionals.add(ga);
@@ -436,7 +566,7 @@ public class MimicDependencyResolver implements DependencyResolver {
                     System.err.println("MIMIC: [ROOTSKIP] " + dGid + ":" + dAid + " (no version)");
                 }
             }
-            ResolutionResult finalResult = resolve(rootNodes, effectiveScopes, projectScopes, ctx, resolved, resolvedDepths, resolvedOptionals);
+            ResolutionResult finalResult = resolve(rootNodes, effectiveScopes, projectScopes, ctx, resolved, resolvedDepths, strongestScopes, resolvedOptionals);
             if (!noCache && !isReactorRoot && finalResult.errors().isEmpty()) {
                 File cacheFile = CacheManager.getCacheFile(pomFile, effectiveScopes);
                 List<CachedDependency> toCache = finalResult.dependencies().stream()
@@ -604,6 +734,7 @@ public class MimicDependencyResolver implements DependencyResolver {
             if (projectVer != null) {
                 this.properties.put("project.version", projectVer);
                 this.properties.put("version", projectVer);
+                this.properties.put("pom.version", projectVer);
             }
             String projectGid = pom.getGroupId();
             if (projectGid == null && pom.getParent() != null)
@@ -611,11 +742,13 @@ public class MimicDependencyResolver implements DependencyResolver {
             if (projectGid != null) {
                 this.properties.put("project.groupId", projectGid);
                 this.properties.put("groupId", projectGid);
+                this.properties.put("pom.groupId", projectGid);
             }
             String projectAid = pom.getArtifactId();
             if (projectAid != null) {
                 this.properties.put("project.artifactId", projectAid);
                 this.properties.put("artifactId", projectAid);
+                this.properties.put("pom.artifactId", projectAid);
             }
             if (pom.getParent() != null) {
                 String pV = pom.getParent().getVersion();
@@ -748,20 +881,35 @@ public class MimicDependencyResolver implements DependencyResolver {
                 return val;
             String result = val;
 
-            // Loop for recursive resolution
             for (int i = 0; i < 8; i++) {
                 boolean changed = false;
-                for (Map.Entry<String, String> entry : properties.entrySet()) {
-                    if (entry.getValue() != null) {
-                        String needle = "${" + entry.getKey() + "}";
-                        if (result.contains(needle)) {
-                            result = result.replace(needle, entry.getValue());
+                int start = result.indexOf("${");
+                if (start == -1) break;
+                
+                StringBuilder sb = new StringBuilder();
+                int lastPos = 0;
+                while (start != -1) {
+                    sb.append(result, lastPos, start);
+                    int end = result.indexOf("}", start);
+                    if (end == -1) {
+                        sb.append("${");
+                        lastPos = start + 2;
+                    } else {
+                        String name = result.substring(start + 2, end);
+                        String propVal = getPropertyValue(name);
+                        if (propVal != null) {
+                            sb.append(propVal);
                             changed = true;
+                        } else {
+                            sb.append("${").append(name).append("}");
                         }
+                        lastPos = end + 1;
                     }
+                    start = result.indexOf("${", lastPos);
                 }
-                if (!changed || !result.contains("${"))
-                    break;
+                sb.append(result.substring(lastPos));
+                result = sb.toString();
+                if (!changed) break;
             }
             if (result.contains("${")) {
                 // System.err.println("MIMIC: [PROP-FAIL] " + val + " -> " + result + " in
@@ -773,6 +921,14 @@ public class MimicDependencyResolver implements DependencyResolver {
                 }
             }
             return result;
+        }
+
+        private String getPropertyValue(String name) {
+            String v = properties.get(name);
+            if (v == null && parent != null) {
+                v = parent.getPropertyValue(name);
+            }
+            return v;
         }
     }
 
@@ -948,6 +1104,58 @@ public class MimicDependencyResolver implements DependencyResolver {
             return;
         for (File path : reactorPaths) {
             scanForPoms(path);
+        }
+    }
+
+    private void discoverReactorRoots(File pomFile) {
+        LinkedHashSet<File> candidateRoots = new LinkedHashSet<>();
+        File currentPom = pomFile.getAbsoluteFile();
+
+        // Always include the current module directory.
+        if (currentPom.getParentFile() != null) {
+            candidateRoots.add(currentPom.getParentFile().getAbsoluteFile());
+        }
+
+        while (currentPom != null) {
+            try {
+                PomModel model = PomModel.parse(currentPom);
+                PomModel.Parent parent = model.getParent();
+                if (parent == null || parent.getRelativePath() == null)
+                    break;
+
+                String relativePath = parent.getRelativePath().trim();
+                if (relativePath.isEmpty()) {
+                    relativePath = "../pom.xml";
+                }
+
+                File baseDir = currentPom.getParentFile();
+                File parentPom = new File(baseDir, relativePath);
+                if (parentPom.isDirectory()) {
+                    parentPom = new File(parentPom, "pom.xml");
+                }
+                parentPom = parentPom.getCanonicalFile();
+                if (!parentPom.exists()) {
+                    break;
+                }
+
+                File parentDir = parentPom.getParentFile().getAbsoluteFile();
+                if (!candidateRoots.add(parentDir)) {
+                    break; // cycle or repetition
+                }
+
+                currentPom = parentPom;
+            } catch (Exception e) {
+                break;
+            }
+        }
+
+        for (File root : candidateRoots) {
+            if (!reactorPaths.contains(root)) {
+                reactorPaths.add(root);
+                if (debugFilter != null) {
+                    System.err.println("MIMIC: [REACTOR-AUTO] " + root);
+                }
+            }
         }
     }
 

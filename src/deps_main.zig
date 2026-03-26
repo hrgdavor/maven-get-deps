@@ -291,6 +291,43 @@ fn cmdMimic(allocator: std.mem.Allocator, args: []const []const u8) !void {
     resolver.skip_siblings = skip_siblings;
     if (debug_match) |dm| resolver.debug_match = try allocator.dupe(u8, dm);
 
+    if (reactor_paths.items.len == 0) {
+        // Auto-detect reactor roots from pom parent chain (relativePath) if no explicit reactor is provided
+        var current_pom_path = pom_path.?.*;
+        while (true) {
+            const pom_dir = try std.fs.path.dirname(allocator, current_pom_path);
+            const file_data = try std.fs.cwd().readFileAlloc(allocator, current_pom_path, 10 * 1024 * 1024);
+            const model = try pom.PomModel.parse(allocator, file_data);
+
+            // register this module root
+            const root_str = pom_dir; // this is owned from path.dirname
+            var seen = false;
+            for (reactor_paths.items) |rp| if (std.mem.eql(u8, rp, root_str)) { seen = true; break; }
+            if (!seen) try reactor_paths.append(root_str);
+
+            const parent = model.parent;
+            if (parent == null) break;
+            var relative_path = parent.? .relative_path orelse "../pom.xml";
+            if (relative_path.len == 0) relative_path = "../pom.xml";
+            const candidate_path = try std.fs.path.join(allocator, &[_][]const u8{pom_dir, relative_path});
+            var candidate_file = candidate_path;
+            const info = std.fs.cwd().stat(candidate_file);
+            if (info) |s| {
+                if (s.isDir()) {
+                    candidate_file = try std.fs.path.join(allocator, &[_][]const u8{candidate_file, "pom.xml"});
+                }
+            } else {
+                // If relativePath points to a directory or missing, attempt fallback to parent dir (if any)
+                candidate_file = try std.fs.path.join(allocator, &[_][]const u8{pom_dir, "../pom.xml"});
+            }
+            const exists = std.fs.cwd().stat(candidate_file);
+            if (exists.isErr()) break;
+
+            current_pom_path = candidate_file;
+            // continue and parse next parent
+        }
+    }
+
     for (reactor_paths.items) |rp| try resolver.scanReactor(rp);
     for (extra_repos.items) |url| try resolver.addRepository(url);
 
@@ -309,30 +346,32 @@ fn cmdMimic(allocator: std.mem.Allocator, args: []const []const u8) !void {
 
     const start_ms = std.time.milliTimestamp();
     const result = try resolver.resolvePom(pom_path.?, scopes.items);
-    std.debug.print("DEBUG: result.artifacts.len = {d}\n", .{ result.artifacts.len });
     const end_ms = std.time.milliTimestamp();
-    
-    std.debug.print("DEBUG: result.artifacts.len = {d}\n", .{result.artifacts.len});
+
+    var out_buf: [4096 * 4]u8 = undefined;
+    var writer_struct = std.fs.File.stdout().writer(&out_buf);
+    const stdout = &writer_struct.interface;
 
     if (print_count) {
-        std.debug.print("{d}\n", .{result.artifacts.len});
+        try stdout.print("{d}\n", .{result.artifacts.len});
     } else {
         if (result.artifacts.len > 0) {
-        for (result.artifacts) |ad| {
-            if (extended_format) {
-                std.debug.print("   {s}:{s}:{s}:{s}:{s} ({s})\n", .{ ad.group_id, ad.artifact_id, ad.type, ad.version, ad.scope, ad.path });
-            } else {
-                std.debug.print("{s}:{s}:{s}:{s}:{s}\n", .{ ad.group_id, ad.artifact_id, ad.type, ad.version, ad.scope });
+            for (result.artifacts) |ad| {
+                if (extended_format) {
+                    try stdout.print("   {s}:{s}:{s}:{s}:{s} ({s})\n", .{ ad.group_id, ad.artifact_id, ad.type, ad.version, ad.scope, ad.path });
+                } else {
+                    try stdout.print("{s}:{s}:{s}:{s}:{s}\n", .{ ad.group_id, ad.artifact_id, ad.type, ad.version, ad.scope });
+                }
             }
         }
-    }
 
-    std.debug.print("\nResolution completed in {d} ms (cache: {})\n", .{ end_ms - start_ms, cache_tree });
+        std.debug.print("\nResolution completed in {d} ms (cache: {})\n", .{ end_ms - start_ms, cache_tree });
 
-    for (result.errors) |err| {
-        std.debug.print("Error: {s}\n", .{err});
+        for (result.errors) |err| {
+            std.debug.print("Error: {s}\n", .{err});
+        }
     }
-    }
+    try stdout.flush();
 }
 
 fn downloadFile(client: *std.http.Client, url: []const u8, dest_path: []const u8) !void {

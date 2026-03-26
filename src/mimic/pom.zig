@@ -61,9 +61,10 @@ pub const PomModel = struct {
                     if (std.mem.eql(u8, name, "dependency")) {
                         const is_managed = isInside(path, "dependencyManagement");
                         const is_plugin = isInside(path, "plugin") or isInside(path, "plugins");
+                        const is_profile = isInside(path, "profile") or isInside(path, "profiles");
                         
                         const dep = try parseDependency(allocator, &scanner, name);
-                        if (!is_plugin) {
+                        if (!is_plugin and !is_profile) {
                             if (is_managed) {
                                 try m_deps.append(allocator, dep);
                             } else {

@@ -24,6 +24,7 @@ pub const CachedDependency = struct {
     type: []const u8,
     scope: []const u8,
     optional: bool,
+    is_from_reactor: bool,
     exclusions: []const []const u8,
 
     pub fn deinit(self: CachedDependency, allocator: std.mem.Allocator) void {
@@ -261,6 +262,24 @@ pub const MimicResolver = struct {
             }
             resolved_scopes.deinit();
         }
+        var resolved_types = std.StringHashMap([]const u8).init(self.allocator);
+        defer {
+            var it_t = resolved_types.iterator();
+            while (it_t.next()) |entry| {
+                self.allocator.free(entry.key_ptr.*);
+                self.allocator.free(entry.value_ptr.*);
+            }
+            resolved_types.deinit();
+        }
+        var resolved_classifiers = std.StringHashMap(?[]const u8).init(self.allocator);
+        defer {
+            var it_c = resolved_classifiers.iterator();
+            while (it_c.next()) |entry| {
+                self.allocator.free(entry.key_ptr.*);
+                if (entry.value_ptr.*) |v| self.allocator.free(v);
+            }
+            resolved_classifiers.deinit();
+        }
         var resolved_optionals = std.StringHashMap(void).init(self.allocator);
         defer {
             var it_o = resolved_optionals.iterator();
@@ -341,15 +360,23 @@ pub const MimicResolver = struct {
                      std.debug.print("MIMIC: [PROMOTE] {s} from {s} to {s} (depth {d}->{d})\n", .{ ga, existing_scope, ad.scope, old_depth, current.depth });
                 }
                 
-                try resolved_scopes.put(try self.allocator.dupe(u8, ga), try self.allocator.dupe(u8, ad.scope));
+                const gop = try resolved_scopes.getOrPut(ga);
+                if (!gop.found_existing) {
+                    gop.key_ptr.* = try self.allocator.dupe(u8, ga);
+                } else {
+                    self.allocator.free(gop.value_ptr.*);
+                }
+                gop.value_ptr.* = try self.allocator.dupe(u8, ad.scope);
                 
                 // If we promoted from a 'blocking' scope (one not in target) to a relevant one,
                 // we might need to re-expand. Or if we promoted from provided to compile.
                 const was_relevant = isScopeRelevant(existing_scope, effective_scopes, old_depth == 0);
                 const is_now_relevant = isScopeRelevant(ad.scope, effective_scopes, current.depth == 0);
                 
-                if (!was_relevant and is_now_relevant) {
-                    if (self.isDebugMatch(ad.group_id, ad.artifact_id)) std.debug.print("MIMIC: [RE-EXPAND] {s} after promotion\n", .{ga});
+                if ((!was_relevant and is_now_relevant) or scope_promoted) {
+                    if (self.isDebugMatch(ad.group_id, ad.artifact_id)) {
+                        std.debug.print("MIMIC: [RE-EXPAND] {s} depth={d} reason={s}\n", .{ ga, current.depth, if (scope_promoted) "promotion" else "relevance" });
+                    }
                     // Proceed to expand
                 } else {
                     continue; // Already expanded or still blocked
@@ -360,31 +387,54 @@ pub const MimicResolver = struct {
             if (existing_depth == null) {
                 try resolved_depths.put(try self.allocator.dupe(u8, ga), current.depth);
             } else if (current.depth < existing_depth.?) {
-                const gop = try resolved_depths.getOrPut(try self.allocator.dupe(u8, ga));
-                if (gop.found_existing) self.allocator.free(gop.key_ptr.*);
+                const gop = try resolved_depths.getOrPut(ga);
+                if (!gop.found_existing) {
+                    gop.key_ptr.* = try self.allocator.dupe(u8, ga);
+                }
                 gop.value_ptr.* = current.depth;
             }
 
             {
-                const gop = try resolved_versions.getOrPut(try self.allocator.dupe(u8, ga));
-                if (gop.found_existing) {
-                    self.allocator.free(gop.key_ptr.*);
+                const gop = try resolved_versions.getOrPut(ga);
+                if (!gop.found_existing) {
+                    gop.key_ptr.* = try self.allocator.dupe(u8, ga);
+                } else {
                     self.allocator.free(gop.value_ptr.*);
                 }
                 gop.value_ptr.* = try self.allocator.dupe(u8, ad.version);
             }
             {
-                const gop = try resolved_scopes.getOrPut(try self.allocator.dupe(u8, ga));
-                if (gop.found_existing) {
-                    self.allocator.free(gop.key_ptr.*);
+                const gop = try resolved_scopes.getOrPut(ga);
+                if (!gop.found_existing) {
+                    gop.key_ptr.* = try self.allocator.dupe(u8, ga);
+                } else {
                     self.allocator.free(gop.value_ptr.*);
                 }
                 gop.value_ptr.* = try self.allocator.dupe(u8, ad.scope);
             }
             {
-                const gop = try resolved_paths.getOrPut(try self.allocator.dupe(u8, ga));
-                if (gop.found_existing) {
-                    self.allocator.free(gop.key_ptr.*);
+                const gop = try resolved_types.getOrPut(ga);
+                if (!gop.found_existing) {
+                    gop.key_ptr.* = try self.allocator.dupe(u8, ga);
+                } else {
+                    self.allocator.free(gop.value_ptr.*);
+                }
+                gop.value_ptr.* = try self.allocator.dupe(u8, ad.type);
+            }
+            {
+                const gop = try resolved_classifiers.getOrPut(ga);
+                if (!gop.found_existing) {
+                    gop.key_ptr.* = try self.allocator.dupe(u8, ga);
+                } else {
+                    if (gop.value_ptr.*) |v| self.allocator.free(v);
+                }
+                gop.value_ptr.* = if (ad.classifier) |c| try self.allocator.dupe(u8, c) else null;
+            }
+            {
+                const gop = try resolved_paths.getOrPut(ga);
+                if (!gop.found_existing) {
+                    gop.key_ptr.* = try self.allocator.dupe(u8, ga);
+                } else {
                     self.allocator.free(gop.value_ptr.*);
                 }
                 gop.value_ptr.* = try self.allocator.dupe(u8, current.path);
@@ -479,6 +529,7 @@ pub const MimicResolver = struct {
                                     .type = try cur.resolveProperty(self.allocator, dep.type orelse "jar"),
                                     .scope = d_s,
                                     .optional = is_opt,
+                                    .is_from_reactor = is_reactor,
                                     .exclusions = try ex_list.toOwnedSlice(self.allocator),
                                 });
                             }
@@ -502,7 +553,13 @@ pub const MimicResolver = struct {
                     }
                     for (deps) |cd| {
                         const ga_trans = try std.fmt.allocPrint(arena, "{s}:{s}", .{ cd.group_id, cd.artifact_id });
-                        if (current.exclusions.contains(ga_trans) or current.exclusions.contains(try std.fmt.allocPrint(arena, "{s}:*", .{cd.group_id}))) {
+                        const gid_wild = try std.fmt.allocPrint(arena, "{s}:*", .{cd.group_id});
+                        const aid_wild = try std.fmt.allocPrint(arena, "*:{s}", .{cd.artifact_id});
+                        if (current.exclusions.contains(ga_trans) or 
+                            current.exclusions.contains(gid_wild) or 
+                            current.exclusions.contains(aid_wild) or 
+                            current.exclusions.contains("*") or
+                            current.exclusions.contains("*.*")) {
                             continue;
                         }
 
@@ -519,17 +576,20 @@ pub const MimicResolver = struct {
                         }
 
                         if (root_ctx) |rctx| {
-                            if (rctx.getManagedVersion(cd.group_id, cd.artifact_id)) |mv| {
+                            const should_override = true;
+                            if (should_override) {
+                                if (rctx.getManagedVersion(cd.group_id, cd.artifact_id)) |mv| {
                                 const mv_res = try rctx.resolveProperty(arena, mv);
                                 const v_old = v;
                                 v = try self.resolveVersionRange(ArtifactDescriptor{ .group_id = cd.group_id, .artifact_id = cd.artifact_id, .version = mv_res, .scope = "", .path = "" });
                                 if (self.isDebugMatch(cd.group_id, cd.artifact_id)) std.debug.print("MIMIC: [MANAGED-VERSION] {s}:{s} override from {s} to {s} (via {s})\n", .{ cd.group_id, cd.artifact_id, v_old, v, mv_res });
                             }
-                            if (rctx.getManagedScope(cd.group_id, cd.artifact_id)) |ms| {
-                                const ms_res = try rctx.resolveProperty(arena, ms);
-                                if (propagateScope(ad.scope, ms_res)) |ps| {
-                                    if (self.isDebugMatch(cd.group_id, cd.artifact_id)) std.debug.print("MIMIC: [MANAGED-SCOPE] {s}:{s} override from {s} to {s} (via {s})\n", .{ cd.group_id, cd.artifact_id, final_s, ps, ms_res });
-                                    final_s = ps;
+                                if (rctx.getManagedScope(cd.group_id, cd.artifact_id)) |ms| {
+                                    const ms_res = try rctx.resolveProperty(arena, ms);
+                                    if (propagateScope(ad.scope, ms_res)) |ps| {
+                                        if (self.isDebugMatch(cd.group_id, cd.artifact_id)) std.debug.print("MIMIC: [MANAGED-SCOPE] {s}:{s} override from {s} to {s} (via {s})\n", .{ cd.group_id, cd.artifact_id, final_s, ps, ms_res });
+                                        final_s = ps;
+                                    }
                                 }
                             }
                         }
@@ -621,6 +681,8 @@ pub const MimicResolver = struct {
                 .artifact_id = try self.allocator.dupe(u8, aid),
                 .version = try self.allocator.dupe(u8, entry.value_ptr.*),
                 .scope = try self.allocator.dupe(u8, scope),
+                .type = try self.allocator.dupe(u8, resolved_types.get(ga_val) orelse "jar"),
+                .classifier = if (resolved_classifiers.get(ga_val)) |c| if (c) |cv| try self.allocator.dupe(u8, cv) else null else null,
                 .path = try self.allocator.dupe(u8, res_path),
             });
         }
@@ -758,15 +820,6 @@ pub const MimicResolver = struct {
         for (effective_scopes) |s| {
             if (std.mem.eql(u8, s, scope)) return true;
         }
-        // Nuance #37/4: provided/system are relevant if direct, BUT ONLY for compile-time resolution.
-        // If effective_scopes contains 'provided', it was explicitly requested (e.g. by -Dscope=provided or -Dscope=compile)
-        // Actually, Maven 'compile' scope resolution includes provided/system if direct.
-        // BUT 'runtime' scope resolution DOES NOT.
-        // We can detect 'compile' requested if 'compile' is in effective_scopes AND 'runtime' is NOT?
-        // No, both are often there.
-        // Better: check if 'provided' itself is in effective_scopes. 
-        // For -Dscope=runtime, we only have ["runtime", "compile"].
-        // For -Dscope=compile, Maven adds provided/system to the list.
         return false;
     }
 
@@ -837,8 +890,16 @@ pub const MimicResolver = struct {
             const s1 = it1.next();
             const s2 = it2.next();
             if (s1 == null and s2 == null) return 0;
-            const p1 = s1 orelse "0";
-            const p2 = s2 orelse "0";
+            
+            // Maven rule: a version with a qualifier is smaller than the version without it.
+            // e.g. 1.0.0-SNAPSHOT < 1.0.0
+            if (s1 == null) return -1; // v1 has ended, v2 has more (qualifier) -> v1 > v2? 
+                                       // Wait, if v1=1.0.0 and v2=1.0.0-SNAPSHOT: s1=null, s2=SNAPSHOT. 
+                                       // Maven says 1.0.0 > 1.0.0-SNAPSHOT.
+            if (s2 == null) return 1;
+
+            const p1 = s1.?;
+            const p2 = s2.?;
             const n1 = std.fmt.parseInt(i32, p1, 10) catch -1;
             const n2 = std.fmt.parseInt(i32, p2, 10) catch -1;
             if (n1 != -1 and n2 != -1) {
@@ -956,18 +1017,28 @@ pub const MimicResolver = struct {
         if (ad.group_id.len == 0 or ad.artifact_id.len == 0 or ad.version.len == 0 or std.mem.eql(u8, ad.version, "-")) {
             return error.ArtifactNotFound;
         }
-        const ga = try std.fmt.allocPrint(self.allocator, "{s}:{s}", .{ ad.group_id, ad.artifact_id });
+
+        var ad_eff = ad;
+        var ext_eff = extension;
+        // Nuance: Map test-jar type to classifier=tests and extension=jar
+        if (std.mem.eql(u8, ad.type, "test-jar")) {
+            ad_eff.classifier = "tests";
+            ad_eff.type = "jar";
+            ext_eff = "jar";
+        }
+
+        const ga = try std.fmt.allocPrint(self.allocator, "{s}:{s}", .{ ad_eff.group_id, ad_eff.artifact_id });
         defer self.allocator.free(ga);
-        if (std.mem.eql(u8, extension, "pom")) if (self.reactor_poms.get(ga)) |path| return try self.allocator.dupe(u8, path);
+        if (std.mem.eql(u8, ext_eff, "pom")) if (self.reactor_poms.get(ga)) |path| return try self.allocator.dupe(u8, path);
         
-        var ver = ad.version;
+        var ver = ad_eff.version;
         if (std.mem.startsWith(u8, ver, "[") or std.mem.startsWith(u8, ver, "(")) {
             if (std.mem.indexOfScalar(u8, ver, ',')) |comma| {
                 ver = ver[1..comma];
             }
         }
         
-        const rel_path_raw = try deps_format.formatPath(self.allocator, .{ .group_id = ad.group_id, .artifact_id = ad.artifact_id, .version = ver, .extension = extension });
+        const rel_path_raw = try deps_format.formatPath(self.allocator, .{ .group_id = ad_eff.group_id, .artifact_id = ad_eff.artifact_id, .version = ver, .extension = ext_eff });
         defer self.allocator.free(rel_path_raw);
         
         const rel_path = if (std.fs.path.sep == '\\') blk: {
@@ -1071,6 +1142,7 @@ pub const MimicResolver = struct {
                 .type = try self.allocator.dupe(u8, dtype),
                 .scope = try self.allocator.dupe(u8, scope),
                 .optional = std.mem.eql(u8, opt_str, "true"),
+                .is_from_reactor = false,
                 .exclusions = try ex_list.toOwnedSlice(self.allocator),
             });
         }
@@ -1111,6 +1183,14 @@ pub const MimicResolver = struct {
         const content = std.fs.cwd().readFileAlloc(self.allocator, path, 10 * 1024 * 1024) catch return 0;
         defer self.allocator.free(content);
         return @as(i64, @bitCast(std.hash.Wyhash.hash(0, content)));
+    }
+
+    test "compareVersions Maven rules" {
+        try std.testing.expect(compareVersions("1.0.0", "1.0.0-SNAPSHOT") > 0);
+        try std.testing.expect(compareVersions("1.0.1", "1.0.0") > 0);
+        try std.testing.expect(compareVersions("1.0.0-alpha", "1.0.0-beta") < 0);
+        try std.testing.expect(compareVersions("1.0.0", "1.0") == 0);
+        try std.testing.expect(compareVersions("2.0.0", "1.9.9") > 0);
     }
 };
 
@@ -1172,4 +1252,13 @@ test "wyhash64 matching" {
 
     const hash = res.calculateWyhash64(test_file);
     try std.testing.expect(hash != 0);
+}
+
+test "isVersionInRange" {
+    var res = MimicResolver.init(std.testing.allocator, ".");
+    defer res.deinit();
+    try std.testing.expect(res.isVersionInRange("1.5.0", "[1.0.0, 2.0.0)"));
+    try std.testing.expect(!res.isVersionInRange("2.0.0", "[1.0.0, 2.0.0)"));
+    try std.testing.expect(res.isVersionInRange("2.0.0", "[1.0.0, 2.0.0]"));
+    try std.testing.expect(res.isVersionInRange("1.0.0-SNAPSHOT", "[1.0.0-SNAPSHOT, 1.0.0]"));
 }

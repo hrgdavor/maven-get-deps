@@ -46,41 +46,27 @@ async function clearCache() {
 
 async function main() {
     const results = {};
-    
-    // 1. Clear Caches
+
+    // 1. Ensure a clean state before collecting cache performance data
     await clearCache();
-    
-    // 2. Cold Runs
-    console.log("\n--- COLD RUNS (No Cache) ---");
-    const b1 = await run("Baseline 1", ["mvnd", "dependency:list", "-f", POM, "-DskipTests"]);
-    if (b1) results["Baseline 1 (mvnd dependency:list)"] = `${b1.toFixed(2)}ms`;
 
-    const b2 = await run("Baseline 2", ["mvnd", "dependency:copy-dependencies", "-f", POM, "-DskipTests"]);
-    if (b2) results["Baseline 2 (mvnd dependency:copy-dep)"] = `${b2.toFixed(2)}ms`;
-    
-    const jc = await run("Java Classic (Cold)", [JAVA, "-jar", JAVA_JAR, "-p", POM, "-r", REACTOR]);
-    if (jc) results["Java Classic (Cold)"] = `${jc.toFixed(2)}ms`;
-
-    const jm = await run("Java Mimic (Cold)", [JAVA, "-jar", JAVA_JAR, "-m", "-p", POM, "-r", REACTOR]);
-    if (jm) results["Java Mimic (Cold)"] = `${jm.toFixed(2)}ms`;
-
-    const zc = await run("Zig Mimic (Cold)", [ZIG_EXE, "mimic", "-p", POM, "-r", REACTOR]);
-    if (zc) results["Zig Mimic (Cold)"] = `${zc.toFixed(2)}ms`;
-    
-    // 3. Populate Cache
+    // 2. Populate local caches once (all delivery paths)
     console.log("\n--- POPULATING CACHE ---");
-    const jm_cold = await run("Java Mimic (Cold)", [JAVA, "-jar", JAVA_JAR, "-p", POM, "-r", REACTOR, "-m"]);
+    await run("Java Mimic (Populate cache)", [JAVA, "-jar", JAVA_JAR, "-m", "-p", POM, "-r", REACTOR]);
+    await run("Zig Mimic (Populate cache)", [ZIG_EXE, "mimic", "-p", POM, "-r", REACTOR, "--cache-tree"]);
 
-    console.log("\n--- WARM RUNS (With Repository Cache) ---");
+    // 3. Warm runs only (cache should already be populated)
+    console.log("\n--- WARM RUNS (Cache key, local cache populated) ---");
+
     const jc_warm = await run("Java Classic (Warm)", [JAVA, "-jar", JAVA_JAR, "-p", POM, "-r", REACTOR, "-C"]);
     if (jc_warm) results["Java Classic (Warm)"] = `${jc_warm.toFixed(2)}ms`;
 
-    const jm_warm = await run("Java Mimic (Warm)", [JAVA, "-jar", JAVA_JAR, "-p", POM, "-r", REACTOR, "-m", "-C"]);
+    const jm_warm = await run("Java Mimic (Warm)", [JAVA, "-jar", JAVA_JAR, "-m", "-p", POM, "-r", REACTOR, "-C"]);
     if (jm_warm) results["Java Mimic (Warm)"] = `${jm_warm.toFixed(2)}ms`;
 
     const zm_warm = await run("Zig Mimic (Warm)", [ZIG_EXE, "mimic", "-p", POM, "-r", REACTOR, "--cache-tree"]);
     if (zm_warm) results["Zig Mimic (Warm)"] = `${zm_warm.toFixed(2)}ms`;
-    
+
     console.log("\n--- Final Results ---");
     console.table(results);
 }

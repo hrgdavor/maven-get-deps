@@ -10,15 +10,17 @@ The project is structured with two profiles:
 1. The **Maven Plugin (Mojo)**: Built by default to keep the deployable artifact thin.
 2. The **CLI Executable**: Built via the `executable` profile, including CLI parsing logic and outputting a fat JAR.
 
-```powershell
-$env:JAVA_HOME = "C:\Program Files\Java\jdk-17"
+The project is structured with multiple components. You can build everything at once (Java and Zig) using the provided Bun script:
 
-# Build the Maven plugin (default profile)
-mvn clean install -DskipTests
-
-# Build the CLI executable JAR
-mvn clean package -Pexecutable -DskipTests
+```bash
+# Recommended: Build everything (Java & Zig)
+bun scripts/build_all.js
 ```
+
+Alternatively, you can build components individually:
+- **Java**: `mvnd clean install -Pexecutable -DskipTests`
+- **Zig**: `zig build -Doptimize=ReleaseSafe`
+
 
 # GraalVM Native Image Build
 
@@ -115,6 +117,42 @@ To prevent overwriting manually tuned metadata (like specific reflection entries
         $OLD_META $NEW_META $OLD_META
     ```
 4.  **Rebuild**: Run the native build again. The plugin will automatically pick up configurations from `META-INF/native-image`.
+
+To ensure that the dependency resolution logic remains aligned with Maven, we use an automated comparison process across all implementation variants.
+
+### 1. Automated Variant Verification (Bun)
+The most convenient way to verify parity is using the `verify_variants.js` script. It compares Java Classic, Java Mimic, and Zig Mimic against a fresh Maven ground-truth.
+
+```bash
+bun scripts/verify_variants.js --path core            # default test/ deps
+bun scripts/verify_variants.js --path back            # back test case
+bun scripts/verify_variants.js --path core --detail   # include diff lines, summary still at end
+```
+
+### 2. Manual Baseline Generation
+If you need to generate and normalize a specific baseline for deep analysis:
+
+```bash
+# 1. Generate raw list from Maven
+mvnd dependency:list -B -ntp -Dscope=runtime -DoutputFile=raw_baseline.txt
+
+# 2. Normalize to a clean GAV set (gid:aid:ver:scope)
+bun scripts/clean_baseline.js raw_baseline.txt > baseline_clean.txt
+```
+
+
+
+The `verify_variants.js` script will:
+1.  Run `mvnd dependency:list` to establish a ground-truth baseline.
+2.  Run all tool variants on the same test project (`test/deps/complex1/core/pom.xml`).
+3.  Automatically parse and compare the results, reporting any discrepancies for each implementation.
+
+
+### Advanced: Baseline Extraction Utility
+For complex scenarios where you need a sorted, deduplicated, and strictly formatted list of GAVs from Maven's log output, you can use `scripts/BaselineExtractor.java`. 
+
+> [!NOTE]
+> This utility currently has hardcoded paths for specific test cases in its `main` method. It is intended for manual adjustments during deep debugging.
 
 # publish
 
