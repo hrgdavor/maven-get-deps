@@ -7,7 +7,7 @@ Before you go down the rabbit hole in the next paragraphs and give up, there are
   - GraalVM native image generation(and metadata maintenance)
   -  ZIG native apps building
 
-- learn more about [repository layout](doc/MAVEN_LAYOUT.md) is the backbone of java dependency management regardless if you use `mvn`, `gradle`, `mvnd`, `ivy`  
+- learn more about [repository layout](doc/maven/MAVEN_LAYOUT.md) is the backbone of java dependency management regardless if you use `mvn`, `gradle`, `mvnd`, `ivy`  
 
 - browse User Guides for tool instructions and use cases you may find interesting
 
@@ -17,7 +17,7 @@ Before you go down the rabbit hole in the next paragraphs and give up, there are
 | [Systemd Daemon Guide](doc/README.systemd.md)               | Deploy a Java daemon with `systemd` and atomic versioning.           |
 | [Docker Integration (Dynamic)](doc/README.docker.md)        | Thin Docker images with a shared Maven cache.                        |
 | [Docker Integration (Static)](doc/README.static-docker.md)  | Bake fixed classpath into Docker at build time.                      |
-| [Maven Artifact Layout](doc/MAVEN_LAYOUT.md)                | Standard directory patterns and regex conversion examples (Java/JS). |
+| [Maven Artifact Layout](doc/maven/MAVEN_LAYOUT.md)           | Standard directory patterns and regex conversion examples (Java/JS). |
 
 ## One Thing Led To Another
 
@@ -60,7 +60,7 @@ It will pay off in the long run, as it gives you **lean, fast releases**: a 500 
 
 Built for deep analysis and Maven ecosystem integration.
 
-- **maven-get-deps** ([CLI](doc/README.cli.md) / [Maven Plugin](doc/README.maven-plugin.md))
+- **maven-get-deps** ([CLI](doc/README.cli.md) / [Maven Plugin](doc/maven/README.maven-plugin.md))
     - Full **transitive dependency expansion**.
     - Dependency **size reporting** with incremental attribution [link](doc/README.usage-report.md).
     - Classpath generation (`.txt`, `.sh`, `.bat`) [link](doc/README.usage-classpath.md).

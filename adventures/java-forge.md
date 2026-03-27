@@ -6,7 +6,7 @@ Welcome, Traveler! Your path continues. To build a lasting empire, you must firs
 > **Requirements**: [Scroll of Arcane Forging](./primers/forge.md).
 
 > [!NOTE]
-> This adventure is a narrative companion to the **[CLI Guide](../doc/README.cli.md)** and **[Maven Plugin Guide](../doc/README.maven-plugin.md)**.
+> This adventure is a narrative companion to the **[CLI Guide](../doc/README.cli.md)** and **[Maven Plugin Guide](../doc/maven/README.maven-plugin.md)**.
 
 ## 💎 Rewards Summary
 - **Seal of Mastery**: 🏛️ Seal of the Architect.

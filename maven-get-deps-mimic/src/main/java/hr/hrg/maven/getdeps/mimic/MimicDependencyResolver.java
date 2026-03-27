@@ -200,6 +200,9 @@ public class MimicDependencyResolver implements DependencyResolver {
                 ArtifactDescriptor oldAd = resolved.get(ga);
                 boolean currentScopeStronger = isScopeStronger(ad.scope(), oldAd.scope());
 
+                // Nearest-wins (+ scope promotion) per doc/maven/MAVEN_DEPENDENCY_RESOLUTION.md §4.3
+                // and §8. Also implements optional de-optionalization (nearest optional
+                // can be overridden by deeper non-optional if needed).
                 if (current.depth > oldDepth && !currentScopeStronger) {
                     if (isDebugMatch(ad.groupId(), ad.artifactId())) {
                         System.err.println("MIMIC: [SKIP-DEEP] " + ga + " oldDepth=" + oldDepth + " oldScope=" + oldAd.scope() + " currentDepth=" + current.depth + " currentScope=" + ad.scope());
@@ -323,10 +326,16 @@ public class MimicDependencyResolver implements DependencyResolver {
                         String rootManagedV = rootCtx == null ? null : rootCtx.getManagedVersion(cd.groupId, cd.artifactId);
                         String rootManagedS = rootCtx == null ? null : rootCtx.getManagedScope(cd.groupId, cd.artifactId);
 
+                        // Root dependencyManagement override comments:
+                        // * version precedence: root-managed > transitive discovered.
+                        // * scope precedence: root-managed scopes apply only when no explicit
+                        //   scope is present on the dependency (and explicit root direct scope
+                        //   is handled earlier for root deps).
+                        // See doc/maven/MAVEN_DEPENDENCY_RESOLUTION.md §5 and §6.
                         String v = rootManagedV != null ? resolveVersionRange(new ArtifactDescriptor(cd.groupId, cd.artifactId, rootManagedV, null, null, null)) : cd.version;
                         String sRaw = rootManagedS != null ? rootManagedS : cd.scope;
 
-                        // 5. Propagate scope from parent to child
+                        // Propagate scope from parent to child; see §6.1 and §8.
                         String s = propagateScope(ad.scope(), sRaw);
                         if (cd.groupId.equals("jakarta.inject") && cd.artifactId.equals("jakarta.inject-api")) {
                             System.err.println("MIMIC: [DEBUG-INJECT] parent=" + ad.groupId() + ":" + ad.artifactId() + " parentScope=" + ad.scope() + " child=" + cd.groupId + ":" + cd.artifactId + " childRawScope=" + sRaw + " resolvedScope=" + s + " nextDepth=" + (current.depth + 1) + " oldDepth=" + resolvedDepths.getOrDefault(gaTrans, -1));
@@ -518,7 +527,8 @@ public class MimicDependencyResolver implements DependencyResolver {
                     v = resolveVersionRange(new ArtifactDescriptor(dGid, dAid, v, null, null, null));
                 }
                 String managedS = ctx.getManagedScope(dGid, dAid);
-                // Direct dependency scope ALWAYS wins over managed scope
+                // Direct dependency scope ALWAYS wins over managed scope.
+                // See doc/maven/MAVEN_DEPENDENCY_RESOLUTION.md §5.2 and §6.3.
                 String s = (dS != null) ? dS : (managedS != null ? managedS : "compile");
 
                 if (v != null) {

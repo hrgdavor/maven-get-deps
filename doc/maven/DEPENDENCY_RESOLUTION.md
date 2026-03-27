@@ -115,7 +115,8 @@ Matching Maven 100% requires robust comparison tools.
 
 ### 18. BOM Import Property Merging
 **Discovery:** When importing a BOM, the importer's properties must be passed as `inheritedProperties` to the BOM's context.
-- **Solution:** In `PomContext` constructor, pass `this.properties` when calling `loadPomContext` for an imported BOM. Resolve managed versions from the BOM using the BOM's context before merging them.
+- **Solution:** In `PomContext` constructor, pass `this.properties` when calling `loadPomContext` for an imported BOM.
+- **Superseded by §17:** The clause "resolve managed versions from the BOM before merging" was an intermediate step.  The authoritative rule (§17 and `MAVEN_PROPERTIES_AND_MULTIMODULE.md §9`) is to store versions in their **raw/unresolved** form in `managedVersions` and only resolve them when the version is actually consumed during BFS.  The BOM context does have the importer's properties injected (so resolution at use-time is correct), but the values should not be pre-resolved at merge time.
 
 ### 19. Smart Range Matching in Local Repository
 **Discovery:** Maven version ranges like `[3.0, 4.0)` should be resolved to the HIGHEST matching version available in the local repository.

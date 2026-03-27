@@ -1,3 +1,12 @@
+// Maven dependency resolution mimic.
+// See docs:
+// - doc/maven/MAVEN_DEPENDENCY_RESOLUTION.md
+//   * §4 BFS traversal / nearest wins
+//   * §5 version precedence
+//   * §6 scope propagation
+//   * §8 scope strength mediation
+//   * §11 reactor handling
+// - doc/maven/DEPENDENCY_RESOLUTION.md (nuances and parity checks)
 const std = @import("std");
 const xml = @import("xml.zig");
 const pom = @import("pom.zig");
@@ -130,6 +139,8 @@ const Node = struct {
 };
 
 pub const MimicResolver = struct {
+    // This struct implements Maven BFS dependency resolution as in
+    // doc/maven/MAVEN_DEPENDENCY_RESOLUTION.md §4-§15.
     allocator: std.mem.Allocator,
     local_repo: []const u8,
     repo_urls: std.ArrayListUnmanaged([]const u8),
@@ -341,6 +352,8 @@ pub const MimicResolver = struct {
                 const existing_scope = resolved_scopes.get(ga) orelse "compile";
                 const is_existing_optional = resolved_optionals.contains(ga);
 
+                // Nearest-wins with same-depth scope/optional promotion.
+                // Matches doc/maven/MAVEN_DEPENDENCY_RESOLUTION.md §4.3 and §8.
                 if (old_depth == 0 and std.mem.eql(u8, existing_scope, "provided")) continue;
 
                 const scope_promoted = isScopeStronger(ad.scope, existing_scope);
@@ -670,6 +683,8 @@ pub const MimicResolver = struct {
             };
             const res_path = resolved_paths.get(ga_val) orelse "";
 
+            // Final output filtering by optional and scope relevance (see
+            // doc/maven/MAVEN_DEPENDENCY_RESOLUTION.md §9 and §7).
             if (resolved_optionals.contains(ga_val) and depth > 0) continue;
             if (!isScopeRelevant(scope, effective_scopes, depth == 0)) {
                 if (self.isDebugMatch(ga_val, "")) std.debug.print("MIMIC: [FINALIZE-SKIP] {s} scope {s} not relevant at depth {d}\n", .{ ga_val, scope, depth });
@@ -698,6 +713,7 @@ pub const MimicResolver = struct {
         };
     }
 
+    // Scope propagation as described in doc/maven/MAVEN_DEPENDENCY_RESOLUTION.md §6.1.
     fn propagateScope(parent_scope: []const u8, child_scope_raw: []const u8) ?[]const u8 {
         const child_scope = if (child_scope_raw.len == 0) "compile" else child_scope_raw;
         const p_scope = if (parent_scope.len == 0) "compile" else parent_scope;
@@ -722,6 +738,8 @@ pub const MimicResolver = struct {
         return "compile";
     }
 
+    // Scope strength order (compile > runtime > provided > test). Used for BF
+    // override/ promotion in nearest-wins rule (doc/maven/MAVEN_DEPENDENCY_RESOLUTION.md §8).
     fn isScopeStronger(new_scope: []const u8, old_scope: []const u8) bool {
         const order = struct {
             fn get(s: []const u8) i32 {

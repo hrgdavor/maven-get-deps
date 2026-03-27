@@ -1,3 +1,7 @@
+// PomContext and BOM/managed dependency handling for the mimic.
+// See docs:
+// - doc/maven/MAVEN_PROPERTIES_AND_MULTIMODULE.md §2, §4, §5, §9
+// - doc/maven/MAVEN_DEPENDENCY_RESOLUTION.md §2, §5, §11, §12
 const std = @import("std");
 const xml = @import("xml.zig");
 const pom = @import("pom.zig");
@@ -43,6 +47,10 @@ pub const PomContext = struct {
             .imported_boms = .{},
             .debug_match = if (debug_match) |dm| try allocator.dupe(u8, dm) else null,
         };
+
+        // Populating PomContext follows Maven property & management precedence.
+        // See doc/maven/MAVEN_PROPERTIES_AND_MULTIMODULE.md §2, §4, §9 and
+        // doc/maven/MAVEN_DEPENDENCY_RESOLUTION.md §2 (PomContext construction).
 
         // 1. Parent properties (Inherit)
         if (parent) |p| {
@@ -105,7 +113,10 @@ pub const PomContext = struct {
             }
         }
 
-        // Managed dependencies
+        // Managed dependencies: keep raw values (not expanded) and apply
+        // nearest-owner precedence as per doc/maven/MAVEN_DEPENDENCY_RESOLUTION.md §5.1, §17:
+        //   - child dependencyManagement overrides parent/BOM.
+        //   - root managed versions/scopes are resolved in resolve loop using final properties.
         for (model.dependency_management) |dep| {
             const gid = try self.resolveProperty(allocator, dep.group_id orelse "");
             const aid = try self.resolveProperty(allocator, dep.artifact_id orelse "");
