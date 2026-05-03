@@ -165,11 +165,15 @@ fn cmdCurrentName(allocator: std.mem.Allocator, manifest_path: []const u8, args:
     var manifest = try version_manager.Manifest.load(allocator, manifest_path);
     defer manifest.deinit(allocator);
 
+    var out_buf: [4096]u8 = undefined;
+    var writer_struct = std.fs.File.stdout().writer(&out_buf);
+    const stdout = &writer_struct.interface;
     if (manifest.current_version) |cv| {
-        std.debug.print("{s}\n", .{cv});
+        try stdout.print("{s}\n", .{cv});
     } else {
-        std.debug.print("None\n", .{});
+        try stdout.print("None\n", .{});
     }
+    try stdout.flush();
 }
 
 fn cmdCurrentPath(allocator: std.mem.Allocator, manifest_path: []const u8, args: []const []const u8) !void {
@@ -179,16 +183,20 @@ fn cmdCurrentPath(allocator: std.mem.Allocator, manifest_path: []const u8, args:
 
     const cv = manifest.current_version orelse {
         std.debug.print("Error: No version currently active.\n", .{});
-        return;
+        std.process.exit(1);
     };
 
     const path = try manifest.findVersionPath(allocator, cv) orelse {
         std.debug.print("Error: Path for version {s} not found.\n", .{cv});
-        return;
+        std.process.exit(1);
     };
     defer allocator.free(path);
 
-    std.debug.print("{s}\n", .{path});
+    var out_buf: [4096]u8 = undefined;
+    var writer_struct = std.fs.File.stdout().writer(&out_buf);
+    const stdout = &writer_struct.interface;
+    try stdout.print("{s}\n", .{path});
+    try stdout.flush();
 }
 
 fn cmdListVersionsPrint(allocator: std.mem.Allocator, manifest: version_manager.Manifest) void {

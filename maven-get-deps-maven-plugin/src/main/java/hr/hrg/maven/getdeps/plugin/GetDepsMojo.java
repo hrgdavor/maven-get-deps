@@ -96,8 +96,10 @@ public class GetDepsMojo extends AbstractMojo {
                 File effectiveFile = file;
                 if (file != null) {
                     if (copyJars && destDir != null) {
-                        if (!destDir.exists()) destDir.mkdirs();
-                        File targetFile = new File(destDir, file.getName());
+                        String groupPath = dep.groupId().replace('.', File.separatorChar);
+                        File repoDir = new File(new File(new File(destDir, groupPath), dep.artifactId()), dep.version());
+                        if (!repoDir.exists()) repoDir.mkdirs();
+                        File targetFile = new File(repoDir, file.getName());
                         if (!targetFile.exists()) {
                             getLog().info("Copy file  " + targetFile.toPath());
                             Files.copy(file.toPath(), targetFile.toPath());
@@ -105,7 +107,11 @@ public class GetDepsMojo extends AbstractMojo {
                         effectiveFile = targetFile;
                     }
                 } else {
-                    getLog().warn("Missing file for " + dep.toGAV());
+                    if (!"pom".equals(dep.type())) {
+                        String groupPath = dep.groupId().replace('/', File.separatorChar).replace('.', File.separatorChar);
+                        File expectedFile = new File(new File(new File(new File(repoSession.getLocalRepository().getBasedir(), groupPath), dep.artifactId()), dep.version()), dep.artifactId() + "-" + dep.version() + (dep.classifier() != null && !dep.classifier().isEmpty() ? "-" + dep.classifier() : "") + "." + dep.type());
+                        getLog().warn("V2 Missing file for " + dep.toGAV() + " (expected: " + expectedFile.getAbsolutePath() + ")");
+                    }
                 }
 
                 if (classpath) {

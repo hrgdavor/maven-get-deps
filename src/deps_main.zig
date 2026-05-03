@@ -46,7 +46,6 @@ fn printUsage() void {
         \\  scan-main       Search for Java files with a main method (alias: find-main)
         \\  mimic           Resolve Maven dependencies using mimic resolver
         \\
-
         \\Deps Options:
         \\  --input <file>              Input file
         \\  --convert-format <type>     'colon' or 'path'
@@ -182,14 +181,31 @@ fn cmdDeps(allocator: std.mem.Allocator, args: []const []const u8) !void {
                     }
                     is_first = false;
 
-                    if (fmt == .path and !info.isLocal()) {
+                    if (info.isLocal()) {
+                        // local path: make absolute if relative
+                        const lp = info.local_path.?;
+                        if (std.fs.path.isAbsolute(lp)) {
+                            try stdout.writeAll(lp);
+                        } else if (std.fs.realpathAlloc(allocator, lp)) |abs| {
+                            defer allocator.free(abs);
+                            try stdout.writeAll(abs);
+                        } else |_| {
+                            const cwd = try std.fs.cwd().realpathAlloc(allocator, ".");
+                            defer allocator.free(cwd);
+                            const abs = try std.fs.path.join(allocator, &[_][]const u8{ cwd, lp });
+                            defer allocator.free(abs);
+                            try stdout.writeAll(abs);
+                        }
+                    } else if (fmt == .path) {
                         try stdout.writeAll(source_repo_path);
                         if (!std.mem.endsWith(u8, source_repo_path, "/") and !std.mem.endsWith(u8, source_repo_path, "\\")) {
                             const sep = [_]u8{std.fs.path.sep};
                             try stdout.writeAll(&sep);
                         }
+                        try stdout.writeAll(formatted);
+                    } else {
+                        try stdout.writeAll(formatted);
                     }
-                    try stdout.writeAll(formatted);
                 } else if (!download_mode) {
                     try stdout.writeAll(formatted);
                     try stdout.writeAll("\n");
@@ -204,6 +220,17 @@ fn cmdDeps(allocator: std.mem.Allocator, args: []const []const u8) !void {
                 const ecp_content = try ecp_f.readToEndAlloc(allocator, 1 * 1024 * 1024);
                 defer allocator.free(ecp_content);
 
+                // Resolve the directory of the extra-classpath file itself
+                const ecp_file_abs = if (std.fs.path.isAbsolute(ecp_file))
+                    try allocator.dupe(u8, ecp_file)
+                else blk: {
+                    const cwd = try std.fs.cwd().realpathAlloc(allocator, ".");
+                    defer allocator.free(cwd);
+                    break :blk try std.fs.path.join(allocator, &[_][]const u8{ cwd, ecp_file });
+                };
+                defer allocator.free(ecp_file_abs);
+                const ecp_dir = std.fs.path.dirname(ecp_file_abs) orelse ".";
+
                 var ecp_iter = std.mem.splitScalar(u8, ecp_content, '\n');
                 while (ecp_iter.next()) |ecp_line| {
                     const trimmed = std.mem.trim(u8, ecp_line, " \t\r\n");
@@ -213,7 +240,13 @@ fn cmdDeps(allocator: std.mem.Allocator, args: []const []const u8) !void {
                             try stdout.writeAll(&delim);
                         }
                         is_first = false;
-                        try stdout.writeAll(trimmed);
+                        if (std.fs.path.isAbsolute(trimmed)) {
+                            try stdout.writeAll(trimmed);
+                        } else {
+                            const abs = try std.fs.path.join(allocator, &[_][]const u8{ ecp_dir, trimmed });
+                            defer allocator.free(abs);
+                            try stdout.writeAll(abs);
+                        }
                     }
                 }
             }

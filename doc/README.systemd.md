@@ -10,11 +10,11 @@ The example project consists of:
 ## 2. Deployment Structure
 A production-ready version folder (e.g., `/opt/md-to-odt/v1.0.0`) must be self-contained and portable. It should contain:
 
-| File | Description |
-| :--- | :--- |
-| `md-to-odt.jar` | The main application JAR. |
-| `odt-lib.jar` | The local library JAR (not yet in Central/Nexus). |
-| `cp.txt` | Full list of dependencies produced by `maven-get-deps`. |
+| File            | Description                                             |
+| --------------- | ------------------------------------------------------- |
+| `md-to-odt.jar` | The main application JAR.                               |
+| `odt-lib.jar`   | The local library JAR (not yet in Central/Nexus).       |
+| `cp.txt`        | Full list of dependencies produced by `maven-get-deps`. |
 
 > [!NOTE]
 > `logback.xml` and other shared assets (e.g., templates, global configs) should be kept in the deployment root (e.g., `/opt/md-to-odt/`) rather than inside specific version folders. This allows configuration to be decoupled from code and shared across upgrades.
@@ -98,18 +98,22 @@ User=deploy
 Group=deploy
 WorkingDirectory=/opt/md-to-odt
 
+RuntimeDirectory=md-to-odt
+RuntimeDirectoryMode=0755
+
 # 1. Dynamically generate the full CLASSPATH from the version's cp.txt
 #    Note: 'current' is our atomic symlink. We include the app jar itself.
-ExecStartPre=/bin/sh -c 'echo "CLASSPATH=current/md-to-odt.jar:$(./get_deps -i current/cp.txt --classpath --cache /opt/shared/m2)" > /run/md-to-odt.env'
+ExecStartPre=/bin/sh -c 'echo "CLASSPATH=current/md-to-odt.jar:$(./get_deps -i current/cp.txt --classpath --cache /opt/shared/m2)" > /run/md-to-odt/dynamic.env'
 
 # 2. Load the environment variable and start the JVM
 #    - CLASSPATH: automatically picked up, keeps 'ps' output clean.
-#    - LOG_DIR: used by Logback to find where to store/rotate logs.
-#    - logback.configurationFile: points to the external config for live scanning.
-EnvironmentFile=/run/md-to-odt.env
+EnvironmentFile=-/run/md-to-odt/dynamic.env
 Environment=LOG_DIR=/var/log/md-to-odt
 # Note: Java automatically picks up the CLASSPATH variable, keeping 'ps' output clean.
-ExecStart=/usr/bin/java -Dlogback.configurationFile=logback.xml hr.hrg.md2odt.Main /srv/md/input /srv/md/output
+ExecStart=/usr/bin/java hr.hrg.md2odt.Main /srv/md/input /srv/md/output
+
+StandardOutput=file:/var/log/myapp/stdout.log
+StandardError=file:/var/log/myapp/stderr.log
 
 # Security Hardening (Systemd features)
 ProtectSystem=full

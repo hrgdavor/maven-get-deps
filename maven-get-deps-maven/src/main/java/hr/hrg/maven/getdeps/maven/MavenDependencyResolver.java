@@ -15,6 +15,8 @@ import org.eclipse.aether.collection.DependencyCollectionException;
 import org.eclipse.aether.graph.Dependency;
 import org.eclipse.aether.graph.DependencyNode;
 import org.eclipse.aether.graph.Exclusion;
+import org.eclipse.aether.repository.LocalArtifactRequest;
+import org.eclipse.aether.repository.LocalArtifactResult;
 import org.eclipse.aether.repository.RemoteRepository;
 import org.eclipse.aether.repository.WorkspaceReader;
 import org.eclipse.aether.repository.WorkspaceRepository;
@@ -24,6 +26,9 @@ import org.eclipse.aether.resolution.ArtifactResolutionException;
 import org.eclipse.aether.util.artifact.JavaScopes;
 import org.eclipse.aether.util.filter.DependencyFilterUtils;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -31,6 +36,8 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 public class MavenDependencyResolver implements DependencyResolver {
+
+    private static final Logger log = LoggerFactory.getLogger(MavenDependencyResolver.class);
 
     private final RepositorySystem system;
     private final String localRepoPath;
@@ -190,40 +197,17 @@ public class MavenDependencyResolver implements DependencyResolver {
             List<NodeWithPath> nodes = new ArrayList<>();
             collectNodes(collectResult.getRoot(), new ArrayList<>(), filter, nodes, new HashSet<>());
 
-            List<ArtifactRequest> requests = nodes.stream()
-                .map(n -> n.node)
-                .filter(n -> n.getArtifact() != null)
-                .map(n -> new ArtifactRequest(n.getArtifact(), repos, null))
-                .collect(Collectors.toList());
-
-            List<ArtifactResult> results;
-            try {
-                results = system.resolveArtifacts(session, requests);
-            } catch (ArtifactResolutionException e) {
-                results = e.getResults();
-            }
-
             List<ArtifactDescriptor> dependencies = new ArrayList<>();
             Map<ArtifactDescriptor, File> artifactFiles = new HashMap<>();
             List<String> errors = new ArrayList<>();
-
-            Map<String, File> resolvedFiles = new HashMap<>();
-            for (ArtifactResult ar : results) {
-                if (ar.isResolved()) {
-                    Artifact ra = ar.getArtifact();
-                    resolvedFiles.put(artifactKey(ra), ra.getFile());
-                } else if (!ar.getExceptions().isEmpty()){
-                    errors.add("Failed to resolve " + ar.getRequest().getArtifact() + ": " + ar.getExceptions().get(0).getMessage());
-                }
-            }
 
             for (NodeWithPath nodeWithPath : nodes) {
                 DependencyNode node = nodeWithPath.node;
                 Artifact artifact = node.getArtifact();
                 if (artifact == null) continue;
-                
+
                 String scope = (node.getDependency() != null) ? node.getDependency().getScope() : null;
-                
+
                 // Explicitly filter by requested scopes if provided
                 if (scopes != null && !scopes.isEmpty() && scope != null) {
                     if (!scopes.contains(scope)) continue;
@@ -231,8 +215,8 @@ public class MavenDependencyResolver implements DependencyResolver {
 
                 ArtifactDescriptor ad = fromAetherArtifact(artifact, scope, nodeWithPath.path);
                 dependencies.add(ad);
-                
-                File file = resolvedFiles.get(artifactKey(artifact));
+
+                File file = findLocalFile(artifact);
                 if (file != null) {
                     artifactFiles.put(ad, file);
                 }
@@ -262,6 +246,29 @@ public class MavenDependencyResolver implements DependencyResolver {
             e.printStackTrace();
             return new ResolutionResult(Collections.emptyList(), Collections.emptyMap(), List.of(e.getMessage()));
         }
+    }
+
+    private File findLocalFile(Artifact artifact) {
+        // 1. Workspace reader (reactor / local build output)
+        if (session.getWorkspaceReader() != null) {
+            File f = session.getWorkspaceReader().findArtifact(artifact);
+            if (f != null && f.exists()) return f;
+        }
+        // 2. Local repository manager (honours tracking / availability metadata)
+        LocalArtifactRequest req = new LocalArtifactRequest(artifact, repos, null);
+        LocalArtifactResult res = session.getLocalRepositoryManager().find(session, req);
+        if (res.getFile() != null && res.getFile().exists()) return res.getFile();
+        // 3. Physical file check — getFile() is null when isAvailable()=false even if the
+        //    jar is present (e.g. _remote.repositories mismatch across Maven invocations)
+        String localPath = session.getLocalRepositoryManager().getPathForLocalArtifact(artifact);
+        File physicalFile = new File(session.getLocalRepository().getBasedir(), localPath);
+        if (physicalFile.exists()) return physicalFile;
+        // 4. Log diagnostic info so we can understand why all three steps failed
+        log.warn("findLocalFile: could not locate {}:{}:{}  ext={} classifier={}  step2.file={}  step3.path={}",
+                artifact.getGroupId(), artifact.getArtifactId(), artifact.getVersion(),
+                artifact.getExtension(), artifact.getClassifier(),
+                res.getFile(), physicalFile.getAbsolutePath());
+        return null;
     }
 
     private static String artifactKey(Artifact a) {
