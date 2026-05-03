@@ -1,5 +1,7 @@
 const std = @import("std");
 const deps_format = @import("deps_format.zig");
+const java_scan = @import("java_scan.zig");
+
 const mimic = @import("mimic/resolver.zig");
 const pom = @import("mimic/pom.zig");
 
@@ -20,6 +22,8 @@ pub fn main() !void {
         try cmdDeps(allocator, args[2..]);
     } else if (std.mem.eql(u8, command, "mimic")) {
         try cmdMimic(allocator, args[2..]);
+    } else if (std.mem.eql(u8, command, "scan-main") or std.mem.eql(u8, command, "find-main")) {
+        try cmdScanMain(allocator, args[2..]);
     } else if (std.mem.eql(u8, command, "--help") or std.mem.eql(u8, command, "-h")) {
         printUsage();
         return;
@@ -39,7 +43,10 @@ fn printUsage() void {
         \\
         \\Commands:
         \\  deps            Resolve Maven dependencies (default if --input is first)
+        \\  scan-main       Search for Java files with a main method (alias: find-main)
+        \\  mimic           Resolve Maven dependencies using mimic resolver
         \\
+
         \\Deps Options:
         \\  --input <file>              Input file
         \\  --convert-format <type>     'colon' or 'path'
@@ -416,4 +423,9 @@ fn downloadFile(client: *std.http.Client, url: []const u8, dest_path: []const u8
 
     _ = try reader.streamRemaining(writer);
     try writer.flush();
+}
+
+fn cmdScanMain(allocator: std.mem.Allocator, args: []const []const u8) !void {
+    const scan_path = if (args.len > 0) args[0] else ".";
+    try java_scan.scanAndPrint(allocator, scan_path);
 }

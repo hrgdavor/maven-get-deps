@@ -1,5 +1,14 @@
 ## What is here
 
+Cookboks for different things this project helps do
+
+- [lin](docs/java.cli.l.md)/[win]([Linux](docs/java.cli.w.md)) - Run java app as **CLI** from anywhere
+- [lin](docs/java.cli.l.md)/[win]([Linux](docs/java.cli.w.md)) - Start java app **faster**
+- [lin](docs/java.cli.l.md)/[win]([Linux](docs/java.cli.w.md)) - Run Java app **without IDE** (cli for you or agents to use)
+
+
+
+
 Before you go down the rabbit hole in the next paragraphs and give up, there are parts of this repository that are easier to digest and some you may find interesting even if not trying to setup a java application somewhere.
 
 - checkout the [Interactive Download Guide](https://hrgdavor.github.io/maven-get-deps/download.html) for easier download. But if you really want, you can visit  [GitHub Releases](https://github.com/hrgdavor/maven-get-deps/releases/latest) 
@@ -65,6 +74,7 @@ Built for deep analysis and Maven ecosystem integration.
     - Dependency **size reporting** with incremental attribution [link](doc/README.usage-report.md).
     - Classpath generation (`.txt`, `.sh`, `.bat`) [link](doc/README.usage-classpath.md).
     - **Copy dependencies** to a separate folder.
+    - **Search for main methods** (`scan-main`) recursively in source folders.
     - Local Maven cache filling (downloading missing artifacts).
 - **gradle plugin** [link](doc/gradle.plugin.md) | lightweight Gradle equivalent with `--extra-classpath` support.
 - **cve12** (Focused CLI) [link](doc/README.usage-cve.md)
@@ -78,6 +88,7 @@ Native binaries with zero dependencies, optimized for production runtime usage.
 
 - **get_deps**
     - Instant path resolution and classpath generation. [link](doc/README.usage-classpath.md)
+    - **Search for main methods** (`scan-main`) recursively in source folders.
     - Local Maven cache filling (downloading missing artifacts).
 - **version_manager**
     - Zero-downtime deployment via **atomic symlink swaps**.
@@ -108,3 +119,13 @@ All runs were measured externally by a Bun script (`bun run scripts/perf_test.js
 
 ---
 
+# usage examples
+
+win shell
+```sh
+mvnd hr.hrg:maven-get-deps:1.0.1:get-deps -DdestDir=lib -DcopyJars=true "-DoutputFile=target/deps.txt"
+
+$env:CLASSPATH = get_deps --input .\target\deps.txt --classpath --convert-format path
+$env:CLASSPATH = "$env:CLASSPATH;target/classes"
+
+```

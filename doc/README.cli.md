@@ -13,6 +13,9 @@ java -jar maven-get-deps-cli.jar commons-lang:commons-lang:2.6 --report report.m
 
 # Copy dependencies to a 'lib' folder
 java -jar maven-get-deps-cli.jar pom.xml --dest-dir lib
+
+# Search for main methods in a source folder
+java -jar maven-get-deps-cli.jar scan-main src/main/java
 ```
 
 ## 🛠️ Usage
@@ -45,6 +48,7 @@ If you have compiled the tool with GraalVM (see [README.dev.md](README.dev.md)),
 | `-ecp, --extra-classpath <f>` | File containing additional classpath entries to append. |
 | `-es, --exclude-siblings` | Exclude artifacts from the same reactor (default: `false`). |
 | `-v, --version` | Show tool version. |
+| `scan-main [path]` | Command: Search for Java files with `main` method (alias: `find-main`). |
 
 ## 📖 Key Features
 
@@ -62,6 +66,19 @@ Generates environment-ready `CLASSPATH` strings for scripts (`.sh`, `.bat`).
 
 ### Artifact Copying
 Streamlines deployment by gathering all required JARs into a single directory.
+
+### Java Main Method Scanner
+Recursively scans a directory for Java source files containing a `public static void main` method and outputs their full qualified class names. This is useful for identifying entry points in large projects.
+
+**Java Variant:**
+```bash
+java -jar maven-get-deps.jar scan-main [path]
+```
+
+**Zig Variant:**
+```bash
+get_deps scan-main [path]
+```
 
 ## 📝 Input File Format
 The CLI supports a `dependencies.txt` file as a source:

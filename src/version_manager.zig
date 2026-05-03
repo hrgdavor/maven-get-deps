@@ -83,7 +83,11 @@ pub const Manifest = struct {
             defer index.deinit(allocator);
 
             if (index.findVersion(version)) |p| {
-                return try allocator.dupe(u8, p);
+                if (std.fs.path.isAbsolute(p)) {
+                    return try allocator.dupe(u8, p);
+                }
+                const idx_dir = std.fs.path.dirname(idx_path) orelse ".";
+                return try std.fs.path.join(allocator, &[_][]const u8{ idx_dir, p });
             }
         }
         return null;
@@ -169,7 +173,7 @@ pub const VersionIndex = struct {
     }
 };
 
-pub fn generateIndex(allocator: std.mem.Allocator, folders_file_path: []const u8, version_file_name: []const u8) !VersionIndex {
+pub fn generateIndex(allocator: std.mem.Allocator, folders_file_path: []const u8, version_file_name: []const u8, relative: bool) !VersionIndex {
     const file = try std.fs.cwd().openFile(folders_file_path, .{});
     defer file.close();
 
@@ -191,7 +195,13 @@ pub fn generateIndex(allocator: std.mem.Allocator, folders_file_path: []const u8
         const line = std.mem.trim(u8, raw_line, " \t\r\n");
         if (line.len == 0) continue;
 
-        const folder_path = try std.fs.cwd().realpathAlloc(allocator, line);
+        const folder_path = if (relative) blk: {
+            if (std.mem.startsWith(u8, line, "./") or std.mem.startsWith(u8, line, "../") or std.fs.path.isAbsolute(line)) {
+                break :blk try allocator.dupe(u8, line);
+            } else {
+                break :blk try std.fmt.allocPrint(allocator, "./{s}", .{line});
+            }
+        } else try std.fs.cwd().realpathAlloc(allocator, line);
         defer allocator.free(folder_path);
 
         try scanFolder(allocator, &entries, folder_path, version_file_name);
@@ -201,7 +211,7 @@ pub fn generateIndex(allocator: std.mem.Allocator, folders_file_path: []const u8
 }
 
 fn scanFolder(allocator: std.mem.Allocator, entries: *std.ArrayList(VersionIndex.VersionEntry), folder_path: []const u8, version_file_name: []const u8) !void {
-    var dir = try std.fs.openDirAbsolute(folder_path, .{ .iterate = true });
+    var dir = try std.fs.cwd().openDir(folder_path, .{ .iterate = true });
     defer dir.close();
 
     // Check if this folder itself is a version folder
@@ -221,7 +231,7 @@ fn scanFolder(allocator: std.mem.Allocator, entries: *std.ArrayList(VersionIndex
 }
 
 fn processVersionFolder(allocator: std.mem.Allocator, entries: *std.ArrayList(VersionIndex.VersionEntry), folder_path: []const u8, version_file_name: []const u8) !bool {
-    var dir = std.fs.openDirAbsolute(folder_path, .{}) catch return false;
+    var dir = std.fs.cwd().openDir(folder_path, .{}) catch return false;
     defer dir.close();
 
     const v_file = dir.openFile(version_file_name, .{}) catch return false;

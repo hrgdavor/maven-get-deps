@@ -233,9 +233,9 @@ A clean approach is to use a `deploy` group and Linux ACLs.
 
 ### Create the Group and Add Users
 ```bash
-sudo groupadd deploy
-sudo usermod -aG deploy java-app     # The service user
-sudo usermod -aG deploy upload-user # The user uploading new versions
+groupadd deploy
+usermod -aG deploy java-app    # The service user
+usermod -aG deploy upload-user # The user uploading new versions
 ```
 
 ### Apply ACLs
@@ -246,6 +246,7 @@ ACLs ensure that any new file created within the deployment directory is immedia
 sudo apt install acl
 
 # Apply recursive ACLs (-R) and set default ACLs (-d)
-sudo setfacl -R -m g:deploy:rwx,d:g:deploy:rwx /opt/md-to-odt
+setfacl -R -m g:deploy:rwx,d:g:deploy:rwx /opt/md-to-odt
+setfacl -R -m g:deploy:rwx,d:g:deploy:rwx
 ```
 

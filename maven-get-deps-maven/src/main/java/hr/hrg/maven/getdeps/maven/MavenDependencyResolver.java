@@ -90,10 +90,11 @@ public class MavenDependencyResolver implements DependencyResolver {
             org.eclipse.aether.graph.DependencyFilter filter = DependencyFilterUtils.classpathFilter(JavaScopes.RUNTIME, JavaScopes.COMPILE);
             org.eclipse.aether.collection.CollectResult collectResult = system.collectDependencies(session, collectRequest);
             
-            List<DependencyNode> nodes = new ArrayList<>();
+            List<NodeWithPath> nodes = new ArrayList<>();
             collectNodes(collectResult.getRoot(), new ArrayList<>(), filter, nodes, new HashSet<>());
 
             List<ArtifactRequest> requests = nodes.stream()
+                .map(n -> n.node)
                 .filter(n -> n.getArtifact() != null)
                 .map(n -> new ArtifactRequest(n.getArtifact(), repos, null))
                 .collect(Collectors.toList());
@@ -186,10 +187,11 @@ public class MavenDependencyResolver implements DependencyResolver {
             org.eclipse.aether.graph.DependencyFilter filter = DependencyFilterUtils.classpathFilter(scopes);
             org.eclipse.aether.collection.CollectResult collectResult = system.collectDependencies(session, collectRequest);
             
-            List<DependencyNode> nodes = new ArrayList<>();
+            List<NodeWithPath> nodes = new ArrayList<>();
             collectNodes(collectResult.getRoot(), new ArrayList<>(), filter, nodes, new HashSet<>());
 
             List<ArtifactRequest> requests = nodes.stream()
+                .map(n -> n.node)
                 .filter(n -> n.getArtifact() != null)
                 .map(n -> new ArtifactRequest(n.getArtifact(), repos, null))
                 .collect(Collectors.toList());
@@ -205,16 +207,18 @@ public class MavenDependencyResolver implements DependencyResolver {
             Map<ArtifactDescriptor, File> artifactFiles = new HashMap<>();
             List<String> errors = new ArrayList<>();
 
-            Map<Artifact, File> resolvedFiles = new HashMap<>();
+            Map<String, File> resolvedFiles = new HashMap<>();
             for (ArtifactResult ar : results) {
                 if (ar.isResolved()) {
-                    resolvedFiles.put(ar.getArtifact(), ar.getArtifact().getFile());
+                    Artifact ra = ar.getArtifact();
+                    resolvedFiles.put(artifactKey(ra), ra.getFile());
                 } else if (!ar.getExceptions().isEmpty()){
                     errors.add("Failed to resolve " + ar.getRequest().getArtifact() + ": " + ar.getExceptions().get(0).getMessage());
                 }
             }
 
-            for (DependencyNode node : nodes) {
+            for (NodeWithPath nodeWithPath : nodes) {
+                DependencyNode node = nodeWithPath.node;
                 Artifact artifact = node.getArtifact();
                 if (artifact == null) continue;
                 
@@ -225,10 +229,10 @@ public class MavenDependencyResolver implements DependencyResolver {
                     if (!scopes.contains(scope)) continue;
                 }
 
-                ArtifactDescriptor ad = fromAetherArtifact(artifact, scope);
+                ArtifactDescriptor ad = fromAetherArtifact(artifact, scope, nodeWithPath.path);
                 dependencies.add(ad);
                 
-                File file = resolvedFiles.get(artifact);
+                File file = resolvedFiles.get(artifactKey(artifact));
                 if (file != null) {
                     artifactFiles.put(ad, file);
                 }
@@ -260,6 +264,11 @@ public class MavenDependencyResolver implements DependencyResolver {
         }
     }
 
+    private static String artifactKey(Artifact a) {
+        return a.getGroupId() + ":" + a.getArtifactId() + ":" + a.getVersion()
+                + ":" + a.getClassifier() + ":" + a.getExtension();
+    }
+
     private Dependency toAetherDependency(org.apache.maven.model.Dependency d) {
         Artifact artifact = new DefaultArtifact(d.getGroupId(), d.getArtifactId(), d.getClassifier(), d.getType(), d.getVersion());
         List<Exclusion> exclusions = d.getExclusions().stream()
@@ -274,29 +283,28 @@ public class MavenDependencyResolver implements DependencyResolver {
     }
 
     private ArtifactDescriptor fromAetherArtifact(Artifact a) {
-        return fromAetherArtifact(a, null);
+        return fromAetherArtifact(a, null, null);
     }
 
     private ArtifactDescriptor fromAetherArtifact(Artifact a, String scope) {
-        return new ArtifactDescriptor(a.getGroupId(), a.getArtifactId(), a.getVersion(), scope, a.getClassifier(), a.getExtension());
+        return fromAetherArtifact(a, scope, null);
     }
 
-    private void collectNodes(DependencyNode root, List<DependencyNode> dummy, org.eclipse.aether.graph.DependencyFilter filter, List<DependencyNode> nodes, Set<String> seen) {
+    private ArtifactDescriptor fromAetherArtifact(Artifact a, String scope, String path) {
+        return new ArtifactDescriptor(a.getGroupId(), a.getArtifactId(), a.getVersion(), scope, a.getClassifier(), a.getExtension(), path);
+    }
+
+    private void collectNodes(DependencyNode root, List<DependencyNode> dummy, org.eclipse.aether.graph.DependencyFilter filter, List<NodeWithPath> nodes, Set<String> seen) {
         if (root == null) return;
-        
-        class NodeWithPath {
-            DependencyNode node;
-            List<DependencyNode> parents;
-            NodeWithPath(DependencyNode n, List<DependencyNode> p) { this.node = n; this.parents = p; }
-        }
 
         Queue<NodeWithPath> queue = new LinkedList<>();
-        queue.add(new NodeWithPath(root, new ArrayList<>()));
+        queue.add(new NodeWithPath(root, new ArrayList<>(), ""));
 
         while (!queue.isEmpty()) {
             NodeWithPath nwp = queue.poll();
             DependencyNode node = nwp.node;
             List<DependencyNode> parents = nwp.parents;
+            String path = nwp.path;
             
             if (node.getDependency() != null) {
                 Artifact a = node.getArtifact();
@@ -304,17 +312,36 @@ public class MavenDependencyResolver implements DependencyResolver {
                     String key = a.getGroupId() + ":" + a.getArtifactId() + ":" + a.getVersion() + ":" + a.getClassifier() + ":" + a.getExtension();
                     if (seen.add(key)) {
                         if (filter == null || filter.accept(node, parents)) {
-                            nodes.add(node);
+                            nodes.add(new NodeWithPath(node, parents, path));
                         }
                     }
                 }
             }
 
+            String childPath = path;
+            Artifact a = node.getArtifact();
+            if (a != null) {
+                String segment = a.getGroupId() + ":" + a.getArtifactId() + ":" + a.getVersion();
+                childPath = path.isEmpty() ? segment : path + " -> " + segment;
+            }
+
             List<DependencyNode> nextParents = new ArrayList<>(parents);
             nextParents.add(node);
             for (DependencyNode child : node.getChildren()) {
-                queue.add(new NodeWithPath(child, nextParents));
+                queue.add(new NodeWithPath(child, nextParents, childPath));
             }
+        }
+    }
+
+    private static class NodeWithPath {
+        DependencyNode node;
+        List<DependencyNode> parents;
+        String path;
+
+        NodeWithPath(DependencyNode node, List<DependencyNode> parents, String path) {
+            this.node = node;
+            this.parents = parents;
+            this.path = path;
         }
     }
     

@@ -8,7 +8,7 @@ The manifest is the source of truth for an application's deployment state.
 ```json
 {
   "current_version": "1.2.4",
-  "version_index": ["versions.json", "archive.json"],
+  "version_index": ["versions.json"],
   "symlink": "current",
   "trigger_cmd": "systemctl restart my-app",
   "history": [
