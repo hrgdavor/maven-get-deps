@@ -25,28 +25,43 @@ pub fn main() !void {
         std.process.exit(1);
     }
 
-    const manifest_path = args[1];
-    const command = args[2];
-    const cmd_args = args[3..];
+    const command = args[1];
 
-    if (std.mem.eql(u8, command, "init")) {
-        try cmdInit(allocator, manifest_path, cmd_args);
-    } else if (std.mem.eql(u8, command, "deploy")) {
-        try cmdDeploy(allocator, manifest_path, cmd_args);
-    } else if (std.mem.eql(u8, command, "reconcile")) {
-        try cmdReconcile(allocator, manifest_path, cmd_args);
-    } else if (std.mem.eql(u8, command, "current-name")) {
-        try cmdCurrentName(allocator, manifest_path, cmd_args);
-    } else if (std.mem.eql(u8, command, "current-path")) {
-        try cmdCurrentPath(allocator, manifest_path, cmd_args);
-    } else if (std.mem.eql(u8, command, "upgrade-failed")) {
-        try cmdUpgradeFailed(allocator, manifest_path, cmd_args);
-    } else if (std.mem.eql(u8, command, "list")) {
-        try cmdListVersions(allocator, manifest_path, cmd_args);
+    if (std.mem.eql(u8, command, "touch")) {
+        const cmd_args = args[2..];
+        try cmdTouch(cmd_args);
     } else {
-        std.debug.print("Unknown command: {s}\n", .{command});
-        printUsage();
-        std.process.exit(1);
+        if (args.len < 3) {
+            std.debug.print("Error: Missing command\n\n", .{});
+            printUsage();
+            std.process.exit(1);
+        }
+
+        const manifest_path = args[1];
+        const command2 = args[2];
+        const cmd_args = args[3..];
+
+        if (std.mem.eql(u8, command2, "init")) {
+            try cmdInit(allocator, manifest_path, cmd_args);
+        } else if (std.mem.eql(u8, command2, "deploy")) {
+            try cmdDeploy(allocator, manifest_path, cmd_args);
+        } else if (std.mem.eql(u8, command2, "reconcile")) {
+            try cmdReconcile(allocator, manifest_path, cmd_args);
+        } else if (std.mem.eql(u8, command2, "current-name")) {
+            try cmdCurrentName(allocator, manifest_path, cmd_args);
+        } else if (std.mem.eql(u8, command2, "current-path")) {
+            try cmdCurrentPath(allocator, manifest_path, cmd_args);
+        } else if (std.mem.eql(u8, command2, "upgrade-failed")) {
+            try cmdUpgradeFailed(allocator, manifest_path, cmd_args);
+        } else if (std.mem.eql(u8, command2, "list")) {
+            try cmdListVersions(allocator, manifest_path, cmd_args);
+        } else if (std.mem.eql(u8, command2, "list-names")) {
+            try cmdListNames(allocator, manifest_path, cmd_args);
+        } else {
+            std.debug.print("Unknown command: {s}\n", .{command2});
+            printUsage();
+            std.process.exit(1);
+        }
     }
 }
 
@@ -80,7 +95,9 @@ fn printUsage() void {
         \\
         \\  list                List available and recently used versions
         \\
+        \\  list-names          Print all version names, one per line, in manifest/index order
         \\
+        \\  touch <version-file> Update the timestamp field inside a version JSON file
     , .{});
 }
 
@@ -158,6 +175,43 @@ fn cmdListVersions(allocator: std.mem.Allocator, manifest_path: []const u8, args
     };
     defer manifest.deinit(allocator);
     cmdListVersionsPrint(allocator, manifest);
+}
+fn cmdTouch(args: []const []const u8) !void {
+    if (args.len < 1) {
+        std.debug.print("Error: Missing version file path for 'touch' command\n", .{});
+        std.process.exit(1);
+    }
+
+    const version_file_path = args[0];
+    try version_manager.touchVersionFile(version_file_path);
+}
+fn cmdListNames(allocator: std.mem.Allocator, manifest_path: []const u8, args: []const []const u8) !void {
+    _ = args;
+    var manifest = version_manager.Manifest.load(allocator, manifest_path) catch |err| {
+        std.debug.print("Error loading manifest {s}: {any}\n", .{ manifest_path, err });
+        return err;
+    };
+    defer manifest.deinit(allocator);
+    try cmdListNamesPrint(allocator, manifest);
+}
+
+fn cmdListNamesPrint(allocator: std.mem.Allocator, manifest: version_manager.Manifest) !void {
+    var out_buf: [4096]u8 = undefined;
+    var writer_struct = std.fs.File.stdout().writer(&out_buf);
+    const stdout = &writer_struct.interface;
+
+    for (manifest.version_index) |idx_path| {
+        var index = version_manager.VersionIndex.load(allocator, idx_path) catch |err| {
+            std.debug.print("Warning: Failed to load index {s}: {any}\n", .{ idx_path, err });
+            continue;
+        };
+        defer index.deinit(allocator);
+
+        for (index.versions) |entry| {
+            try stdout.print("{s}\n", .{entry.version});
+        }
+    }
+    try stdout.flush();
 }
 
 fn cmdCurrentName(allocator: std.mem.Allocator, manifest_path: []const u8, args: []const []const u8) !void {

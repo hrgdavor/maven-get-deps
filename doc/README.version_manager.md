@@ -80,9 +80,23 @@ Reverts to the previous stable version if a new deployment is found to be unstab
 ```
 Promotes the most recent successful version from history and marks the current one as `"failed": true`.
 
-### 5. list
+### 7. list
 Lists available versions from the index and provides details on the current version and recent history.
 ```sh
 ./version_manager app-manifest.json list
 ```
 Displays index entries, current deployment time, and the last 3 history entries with timestamps and status.
+
+### 8. list-names
+Prints all version names in the order they appear in the manifest's index files, one per line.
+```sh
+./version_manager app-manifest.json list-names
+```
+This is useful for scripting or picking version names without extra metadata.
+
+### 9. touch
+Updates the `timestamp` field inside a version JSON file to keep static versions fresh.
+```sh
+./version_manager touch /path/to/version.json
+```
+

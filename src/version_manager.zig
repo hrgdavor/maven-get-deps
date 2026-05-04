@@ -1,5 +1,12 @@
 const std = @import("std");
 
+const TimestampRange = struct {
+    start: usize,
+    end: usize,
+};
+
+const VersionIndexSortContext = struct {};
+
 pub const Manifest = struct {
     current_version: ?[]const u8 = null,
     version_index: [][]const u8,
@@ -173,12 +180,19 @@ pub const VersionIndex = struct {
     }
 };
 
-pub fn generateIndex(allocator: std.mem.Allocator, folders_file_path: []const u8, version_file_name: []const u8, relative: bool) !VersionIndex {
+pub fn generateIndex(allocator: std.mem.Allocator, folders_file_path: []const u8, version_file_name: []const u8, relative: bool, max_age_months: ?u64) !VersionIndex {
     const file = try std.fs.cwd().openFile(folders_file_path, .{});
     defer file.close();
 
     const content = try file.readToEndAlloc(allocator, 1024 * 1024);
     defer allocator.free(content);
+
+    var cutoff_timestamp: ?i64 = null;
+    if (max_age_months != null) {
+        const months: i64 = @intCast(max_age_months.?);
+        const now = std.time.timestamp();
+        cutoff_timestamp = now - months * 2592000;
+    }
 
     var entries = std.ArrayList(VersionIndex.VersionEntry).empty;
     errdefer {
@@ -204,18 +218,31 @@ pub fn generateIndex(allocator: std.mem.Allocator, folders_file_path: []const u8
         } else try std.fs.cwd().realpathAlloc(allocator, line);
         defer allocator.free(folder_path);
 
-        try scanFolder(allocator, &entries, folder_path, version_file_name);
+        try scanFolder(allocator, &entries, folder_path, version_file_name, cutoff_timestamp);
     }
+
+    std.sort.pdq(VersionIndex.VersionEntry, entries.items, VersionIndexSortContext{}, versionEntryNameDescending);
 
     return VersionIndex{ .versions = try entries.toOwnedSlice(allocator) };
 }
 
-fn scanFolder(allocator: std.mem.Allocator, entries: *std.ArrayList(VersionIndex.VersionEntry), folder_path: []const u8, version_file_name: []const u8) !void {
+fn versionEntryNameDescending(_: VersionIndexSortContext, lhs: VersionIndex.VersionEntry, rhs: VersionIndex.VersionEntry) bool {
+    const min_len = if (lhs.version.len < rhs.version.len) lhs.version.len else rhs.version.len;
+    var i: usize = 0;
+    while (i < min_len) : (i += 1) {
+        if (lhs.version[i] != rhs.version[i]) {
+            return lhs.version[i] > rhs.version[i];
+        }
+    }
+    return lhs.version.len > rhs.version.len;
+}
+
+fn scanFolder(allocator: std.mem.Allocator, entries: *std.ArrayList(VersionIndex.VersionEntry), folder_path: []const u8, version_file_name: []const u8, cutoff_timestamp: ?i64) !void {
     var dir = try std.fs.cwd().openDir(folder_path, .{ .iterate = true });
     defer dir.close();
 
     // Check if this folder itself is a version folder
-    if (try processVersionFolder(allocator, entries, folder_path, version_file_name)) {
+    if (try processVersionFolder(allocator, entries, folder_path, version_file_name, cutoff_timestamp)) {
         return;
     }
 
@@ -225,12 +252,12 @@ fn scanFolder(allocator: std.mem.Allocator, entries: *std.ArrayList(VersionIndex
         if (entry.kind == .directory) {
             const sub_path = try std.fs.path.join(allocator, &[_][]const u8{ folder_path, entry.name });
             defer allocator.free(sub_path);
-            _ = try processVersionFolder(allocator, entries, sub_path, version_file_name);
+            _ = try processVersionFolder(allocator, entries, sub_path, version_file_name, cutoff_timestamp);
         }
     }
 }
 
-fn processVersionFolder(allocator: std.mem.Allocator, entries: *std.ArrayList(VersionIndex.VersionEntry), folder_path: []const u8, version_file_name: []const u8) !bool {
+fn processVersionFolder(allocator: std.mem.Allocator, entries: *std.ArrayList(VersionIndex.VersionEntry), folder_path: []const u8, version_file_name: []const u8, cutoff_timestamp: ?i64) !bool {
     var dir = std.fs.cwd().openDir(folder_path, .{}) catch return false;
     defer dir.close();
 
@@ -272,6 +299,10 @@ fn processVersionFolder(allocator: std.mem.Allocator, entries: *std.ArrayList(Ve
 
     const description = if (v_info_description) |d| try allocator.dupe(u8, d) else null;
     errdefer if (description) |d| allocator.free(d);
+
+    if (cutoff_timestamp != null and timestamp < cutoff_timestamp.?) {
+        return false;
+    }
 
     try entries.append(allocator, .{
         .version = version_name,
@@ -438,6 +469,183 @@ pub fn deploy(allocator: std.mem.Allocator, manifest_path: []const u8, version: 
 
     try manifest.save(manifest_path);
     _ = try reconcile(allocator, manifest_path);
+}
+
+pub fn touchVersionFile(version_file_path: []const u8) !void {
+    const read_file = try std.fs.cwd().openFile(version_file_path, .{});
+    defer read_file.close();
+
+    const content = try read_file.readToEndAlloc(std.heap.page_allocator, 64 * 1024);
+    defer std.heap.page_allocator.free(content);
+
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, content, .{ .ignore_unknown_fields = true });
+    defer parsed.deinit();
+
+    switch (parsed.value) {
+        .object => {},
+        else => return error.InvalidArgument,
+    }
+
+    const range = findTimestampValueRange(content) orelse return error.InvalidArgument;
+    const now = std.time.timestamp();
+    const now_str = try std.fmt.allocPrint(std.heap.page_allocator, "{d}", .{now});
+    defer std.heap.page_allocator.free(now_str);
+
+    const out_len = content.len - (range.end - range.start) + now_str.len;
+    const out = try std.heap.page_allocator.alloc(u8, out_len);
+    defer std.heap.page_allocator.free(out);
+
+    std.mem.copyForwards(u8, out[0..range.start], content[0..range.start]);
+    std.mem.copyForwards(u8, out[range.start .. range.start + now_str.len], now_str);
+    std.mem.copyForwards(u8, out[range.start + now_str.len ..], content[range.end..]);
+
+    const write_file = try std.fs.cwd().createFile(version_file_path, .{ .truncate = true });
+    defer write_file.close();
+    try write_file.writeAll(out);
+}
+
+fn isWhitespace(c: u8) bool {
+    return c == ' ' or c == '\t' or c == '\r' or c == '\n';
+}
+
+fn skipString(content: []const u8, start: usize) ?usize {
+    var i = start;
+    var escape = false;
+    while (i < content.len) {
+        const c = content[i];
+        if (escape) {
+            escape = false;
+        } else if (c == '\\') {
+            escape = true;
+        } else if (c == '"') {
+            return i + 1;
+        }
+        i += 1;
+    }
+    return null;
+}
+
+fn skipNumber(content: []const u8, start: usize) ?usize {
+    var i = start;
+    if (i < content.len and content[i] == '-') {
+        i += 1;
+    }
+    if (i >= content.len) return null;
+    if (content[i] == '0') {
+        i += 1;
+    } else if (content[i] >= '1' and content[i] <= '9') {
+        while (i < content.len and content[i] >= '0' and content[i] <= '9') {
+            i += 1;
+        }
+    } else {
+        return null;
+    }
+    if (i < content.len and content[i] == '.') {
+        i += 1;
+        if (i >= content.len or content[i] < '0' or content[i] > '9') return null;
+        while (i < content.len and content[i] >= '0' and content[i] <= '9') {
+            i += 1;
+        }
+    }
+    if (i < content.len and (content[i] == 'e' or content[i] == 'E')) {
+        i += 1;
+        if (i < content.len and (content[i] == '+' or content[i] == '-')) {
+            i += 1;
+        }
+        if (i >= content.len or content[i] < '0' or content[i] > '9') return null;
+        while (i < content.len and content[i] >= '0' and content[i] <= '9') {
+            i += 1;
+        }
+    }
+    return i;
+}
+
+fn skipLiteral(content: []const u8, start: usize, literal: []const u8) ?usize {
+    if (start + literal.len > content.len) return null;
+    if (!std.mem.eql(u8, content[start .. start + literal.len], literal)) return null;
+    return start + literal.len;
+}
+
+fn skipValue(content: []const u8, start: usize) ?usize {
+    if (start >= content.len) return null;
+    const c = content[start];
+    if (c == '"') {
+        return skipString(content, start + 1);
+    }
+    if (c == '{' or c == '[') {
+        var depth: usize = 1;
+        var i = start + 1;
+        var in_string = false;
+        var escape = false;
+        while (i < content.len) {
+            const ch = content[i];
+            if (in_string) {
+                if (escape) {
+                    escape = false;
+                } else if (ch == '\\') {
+                    escape = true;
+                } else if (ch == '"') {
+                    in_string = false;
+                }
+            } else {
+                if (ch == '"') {
+                    in_string = true;
+                } else if (ch == '{' or ch == '[') {
+                    depth += 1;
+                } else if (ch == '}' or ch == ']') {
+                    depth -= 1;
+                    if (depth == 0) return i + 1;
+                }
+            }
+            i += 1;
+        }
+        return null;
+    }
+    if (c == 't') return skipLiteral(content, start, "true");
+    if (c == 'f') return skipLiteral(content, start, "false");
+    if (c == 'n') return skipLiteral(content, start, "null");
+    return skipNumber(content, start);
+}
+
+fn findTimestampValueRange(content: []const u8) ?TimestampRange {
+    var i: usize = 0;
+    while (i < content.len and isWhitespace(content[i])) i += 1;
+    if (i >= content.len or content[i] != '{') return null;
+    i += 1;
+
+    while (true) {
+        while (i < content.len and isWhitespace(content[i])) i += 1;
+        if (i >= content.len) return null;
+        if (content[i] == '}') return null;
+        if (content[i] != '"') return null;
+        const key_start = i + 1;
+        const key_end = skipString(content, key_start) orelse return null;
+        const key = content[key_start .. key_end - 1];
+        i = key_end;
+        while (i < content.len and isWhitespace(content[i])) i += 1;
+        if (i >= content.len or content[i] != ':') return null;
+        i += 1;
+        while (i < content.len and isWhitespace(content[i])) i += 1;
+        const value_start = i;
+        if (std.mem.eql(u8, key, "timestamp")) {
+            const value_end = skipValue(content, value_start) orelse return null;
+            return TimestampRange{ .start = value_start, .end = value_end };
+        }
+        const value_end = skipValue(content, value_start) orelse return null;
+        i = value_end;
+        while (i < content.len and isWhitespace(content[i])) i += 1;
+        if (i >= content.len) return null;
+        if (content[i] == ',') {
+            i += 1;
+            continue;
+        }
+        if (content[i] == '}') return null;
+        return null;
+    }
 }
 
 pub fn upgradeFailed(allocator: std.mem.Allocator, manifest_path: []const u8) !void {

@@ -32,8 +32,7 @@ fn printUsage() void {
         \\  --folders <file>            File containing list of folders to scan
         \\  --output <file>             Output index file path (default: versions.json)
         \\  --version-file <name>       Version file name to look for (default: version.json)
-        \\  --relative                  Write paths as relative ("./path") instead of absolute
-        \\
+        \\  --relative                  Write paths as relative ("./path") instead of absolute        \  --max-age-months <n>        Skip versions older than n months based on timestamp        \\
     , .{});
 }
 
@@ -42,6 +41,7 @@ fn cmdGenIndex(allocator: std.mem.Allocator, args: []const []const u8) !void {
     var output_file: []const u8 = "versions.json";
     var version_file_name: []const u8 = "version.json";
     var relative: bool = false;
+    var max_age_months: ?u64 = null;
 
     var i: usize = 0;
     while (i < args.len) : (i += 1) {
@@ -72,6 +72,14 @@ fn cmdGenIndex(allocator: std.mem.Allocator, args: []const []const u8) !void {
             }
         } else if (std.mem.eql(u8, arg, "--relative")) {
             relative = true;
+        } else if (std.mem.eql(u8, arg, "--max-age-months")) {
+            i += 1;
+            if (i < args.len) {
+                max_age_months = try std.fmt.parseInt(u64, args[i], 10);
+            } else {
+                std.debug.print("Missing value for {s}\n", .{arg});
+                std.process.exit(1);
+            }
         }
     }
 
@@ -80,7 +88,7 @@ fn cmdGenIndex(allocator: std.mem.Allocator, args: []const []const u8) !void {
         std.process.exit(1);
     };
 
-    var index = try version_manager.generateIndex(allocator, ff, version_file_name, relative);
+    var index = try version_manager.generateIndex(allocator, ff, version_file_name, relative, max_age_months);
     defer index.deinit(allocator);
 
     try index.save(output_file);
