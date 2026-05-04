@@ -1,5 +1,6 @@
 const std = @import("std");
 const version_manager = @import("version_manager.zig");
+const app_version = @import("app_version.zig");
 
 pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -25,6 +26,7 @@ pub fn main() !void {
 }
 
 fn printUsage() void {
+    app_version.printHeader("gen_index");
     std.debug.print(
         \\Usage: gen_index [options]
         \\

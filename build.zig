@@ -21,6 +21,9 @@ pub fn build(b: *std.Build) void {
     // target and optimize options) will be listed when running `zig build --help`
     // in this directory.
 
+    // Import the build manifest directly and expose its version to the compiled binaries.
+    const zon = @import("build.zig.zon");
+
     // This creates a module, which represents a collection of source files alongside
     // some compilation options, such as optimization mode and linked system libraries.
     // Zig modules are the preferred way of making Zig code available to consumers.
@@ -40,6 +43,9 @@ pub fn build(b: *std.Build) void {
         // which requires us to specify a target.
         .target = target,
     });
+
+    const options = b.addOptions();
+    options.addOption([]const u8, "version", zon.version);
 
     // Here we define an executable. An executable needs to have a root module
     // which needs to expose a `main` function. While we could add a main function
@@ -68,6 +74,7 @@ pub fn build(b: *std.Build) void {
             },
         }),
     });
+    deps_exe.root_module.addOptions("config", options);
 
     const version_exe = b.addExecutable(.{
         .name = "version_manager",
@@ -80,6 +87,7 @@ pub fn build(b: *std.Build) void {
             },
         }),
     });
+    version_exe.root_module.addOptions("config", options);
 
     const index_exe = b.addExecutable(.{
         .name = "gen_index",
@@ -92,6 +100,7 @@ pub fn build(b: *std.Build) void {
             },
         }),
     });
+    index_exe.root_module.addOptions("config", options);
 
     if (optimize != .Debug) {
         deps_exe.root_module.strip = true;

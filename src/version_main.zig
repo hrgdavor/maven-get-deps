@@ -1,4 +1,5 @@
 const std = @import("std");
+const app_version = @import("app_version.zig");
 const version_manager = @import("version_manager.zig");
 
 pub fn main() !void {
@@ -66,6 +67,7 @@ pub fn main() !void {
 }
 
 fn printUsage() void {
+    app_version.printHeader("version_manager");
     std.debug.print(
         \\
         \\Utility to manage version symlink with history(and timestamps)

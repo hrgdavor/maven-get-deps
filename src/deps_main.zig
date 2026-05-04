@@ -1,4 +1,5 @@
 const std = @import("std");
+const app_version = @import("app_version.zig");
 const deps_format = @import("deps_format.zig");
 const java_scan = @import("java_scan.zig");
 
@@ -38,6 +39,7 @@ pub fn main() !void {
 }
 
 fn printUsage() void {
+    app_version.printHeader("maven_get_deps");
     std.debug.print(
         \\Usage: maven_get_deps <command> [options]
         \\
