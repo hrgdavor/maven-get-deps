@@ -7,7 +7,7 @@ Cookboks for different things this project helps do
 - [lin](docs/java.cli.l.md)/[win]([Linux](docs/java.cli.w.md)) - Run Java app **without IDE** (cli for you or agents to use)
 
 
-
+.
 
 Before you go down the rabbit hole in the next paragraphs and give up, there are parts of this repository that are easier to digest and some you may find interesting even if not trying to setup a java application somewhere.
 
