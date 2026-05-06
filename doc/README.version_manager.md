@@ -90,8 +90,9 @@ Displays index entries, current deployment time, and the last 3 history entries 
 ### 8. list-names
 Prints all version names in the order they appear in the manifest's index files, one per line.
 ```sh
-./version_manager app-manifest.json list-names
+./version_manager app-manifest.json list-names [--skip-current]
 ```
+`--skip-current` omits the current active version from the output.
 This is useful for scripting or picking version names without extra metadata.
 
 ### 9. touch

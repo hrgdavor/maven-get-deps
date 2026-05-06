@@ -97,7 +97,9 @@ fn printUsage() void {
         \\
         \\  list                List available and recently used versions
         \\
-        \\  list-names          Print all version names, one per line, in manifest/index order
+        \\  list-names [--skip-current]
+        \\                      Print all version names, one per line, in manifest/index order.
+        \\                      --skip-current: omit the current active version from output
         \\
         \\  touch <version-file> Update the timestamp field inside a version JSON file
     , .{});
@@ -188,16 +190,22 @@ fn cmdTouch(args: []const []const u8) !void {
     try version_manager.touchVersionFile(version_file_path);
 }
 fn cmdListNames(allocator: std.mem.Allocator, manifest_path: []const u8, args: []const []const u8) !void {
-    _ = args;
+    var skip_current = false;
+    for (args) |arg| {
+        if (std.mem.eql(u8, arg, "--skip-current")) {
+            skip_current = true;
+        }
+    }
+
     var manifest = version_manager.Manifest.load(allocator, manifest_path) catch |err| {
         std.debug.print("Error loading manifest {s}: {any}\n", .{ manifest_path, err });
         return err;
     };
     defer manifest.deinit(allocator);
-    try cmdListNamesPrint(allocator, manifest);
+    try cmdListNamesPrint(allocator, manifest, skip_current);
 }
 
-fn cmdListNamesPrint(allocator: std.mem.Allocator, manifest: version_manager.Manifest) !void {
+fn cmdListNamesPrint(allocator: std.mem.Allocator, manifest: version_manager.Manifest, skip_current: bool) !void {
     var out_buf: [4096]u8 = undefined;
     var writer_struct = std.fs.File.stdout().writer(&out_buf);
     const stdout = &writer_struct.interface;
@@ -210,6 +218,13 @@ fn cmdListNamesPrint(allocator: std.mem.Allocator, manifest: version_manager.Man
         defer index.deinit(allocator);
 
         for (index.versions) |entry| {
+            if (skip_current) {
+                if (manifest.current_version) |cv| {
+                    if (std.mem.eql(u8, entry.version, cv)) {
+                        continue;
+                    }
+                }
+            }
             try stdout.print("{s}\n", .{entry.version});
         }
     }
