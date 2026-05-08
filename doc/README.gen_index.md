@@ -2,7 +2,7 @@
 
 The `gen_index` tool automates the creation of the `versions.json` file by scanning directories. This index is used by `version_manager` to know where each version is physically located on disk.
 
-Generated index entries are sorted by version name in descending order.
+Generated index entries are sorted by version name in descending order by default. Use `--sort-by-timestamp` to order entries by timestamp descending instead.
 
 ## Usage
 
@@ -18,6 +18,7 @@ Generated index entries are sorted by version name in descending order.
 | `-o, --output <file>` | Output index file path. | `versions.json` |
 | `--version-file <name>` | The filename to look for inside directories to extract version data. | `version.json` |
 | `--relative` | Write paths as relative (`./path`) instead of absolute. | (off) |
+| `--sort-by-timestamp` | Sort generated entries by timestamp descending instead of version name. | (off) |
 | `--max-age-months <n>` | Skip versions older than `n` months based on timestamp or folder mtime. | (off) |
 
 ## Path modes

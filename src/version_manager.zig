@@ -180,7 +180,7 @@ pub const VersionIndex = struct {
     }
 };
 
-pub fn generateIndex(allocator: std.mem.Allocator, folders_file_path: []const u8, version_file_name: []const u8, relative: bool, max_age_months: ?u64) !VersionIndex {
+pub fn generateIndex(allocator: std.mem.Allocator, folders_file_path: []const u8, version_file_name: []const u8, relative: bool, sort_by_timestamp: bool, max_age_months: ?u64) !VersionIndex {
     const file = try std.fs.cwd().openFile(folders_file_path, .{});
     defer file.close();
 
@@ -221,7 +221,11 @@ pub fn generateIndex(allocator: std.mem.Allocator, folders_file_path: []const u8
         try scanFolder(allocator, &entries, folder_path, version_file_name, cutoff_timestamp);
     }
 
-    std.sort.pdq(VersionIndex.VersionEntry, entries.items, VersionIndexSortContext{}, versionEntryNameDescending);
+    if (sort_by_timestamp) {
+        std.sort.pdq(VersionIndex.VersionEntry, entries.items, VersionIndexSortContext{}, versionEntryTimestampDescending);
+    } else {
+        std.sort.pdq(VersionIndex.VersionEntry, entries.items, VersionIndexSortContext{}, versionEntryNameDescending);
+    }
 
     return VersionIndex{ .versions = try entries.toOwnedSlice(allocator) };
 }
@@ -235,6 +239,22 @@ fn versionEntryNameDescending(_: VersionIndexSortContext, lhs: VersionIndex.Vers
         }
     }
     return lhs.version.len > rhs.version.len;
+}
+
+fn versionEntryTimestampDescending(_: VersionIndexSortContext, lhs: VersionIndex.VersionEntry, rhs: VersionIndex.VersionEntry) bool {
+    if (lhs.timestamp == null) {
+        if (rhs.timestamp == null) {
+            return versionEntryNameDescending(VersionIndexSortContext{}, lhs, rhs);
+        }
+        return false;
+    }
+    if (rhs.timestamp == null) {
+        return true;
+    }
+    if (lhs.timestamp.? != rhs.timestamp.?) {
+        return lhs.timestamp.? > rhs.timestamp.?;
+    }
+    return versionEntryNameDescending(VersionIndexSortContext{}, lhs, rhs);
 }
 
 fn scanFolder(allocator: std.mem.Allocator, entries: *std.ArrayList(VersionIndex.VersionEntry), folder_path: []const u8, version_file_name: []const u8, cutoff_timestamp: ?i64) !void {

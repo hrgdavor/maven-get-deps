@@ -156,6 +156,8 @@ For complex scenarios where you need a sorted, deduplicated, and strictly format
 
 # publish
 
+To publish artifacts to Maven Central, you must activate the `publish` profile:
+
 ```sh
-mvnd clean deploy -Ppublish
+mvn deploy -P publish
 ```
