@@ -161,3 +161,42 @@ To publish artifacts to Maven Central, you must activate the `publish` profile:
 ```sh
 mvn deploy -P publish
 ```
+
+## mvnd issues
+
+There is a possible edge case between `mvnd` and the Central publishing plugin lifecycle.
+
+### What happens technically
+
+The `central-publishing-maven-plugin` runs in two phases:
+- During `deploy`, it redirects artifacts into `target/central-staging` and builds `central-bundle.zip`.
+- After the reactor/session ends, it uploads the bundle and polls deployment status.
+
+With `mvnd`, phase 1 completes reliably, but phase 2 may be skipped or delayed.
+
+Evidence from logs:
+- `Installing Central Publishing features` and staging/bundle creation are always present.
+- In failing runs, upload-related lines are missing or delayed.
+- With Maven 3.9, you see `Going to upload`, `Uploaded bundle successfully`, and `Waiting until Deployment ...`.
+
+### Why `mvnd` behaves differently
+
+- `mvnd` 1.0.0-m4 embeds Maven 4.0.0-alpha-4.
+- `central-publishing-maven-plugin` 0.7.0 is primarily tested with Maven 3.9 behavior.
+- `mvnd` uses a daemon and different session/lifecycle plumbing, and plugins that rely on end-of-session hooks are more likely to expose compatibility issues.
+
+This points to an execution-model compatibility issue, not a credentials or POM configuration problem.
+
+### Keep using `mvnd`: two-step publish
+
+Stage with `mvnd`, but skip the auto-publish hook:
+
+```sh
+mvnd clean deploy -Ppublish -DskipTests -DskipPublishing=true
+```
+
+Then force publish as an explicit goal (no session hook dependency):
+
+```sh
+mvnd -N org.sonatype.central:central-publishing-maven-plugin:0.7.0:publish -DpublishingServerId=central -DstagingDirectory=target/central-staging -DoutputDirectory=target/central-publishing -DautoPublish=true -DwaitUntil=published
+```

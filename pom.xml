@@ -6,7 +6,7 @@
 
     <groupId>hr.hrg</groupId>
     <artifactId>maven-get-deps-parent</artifactId>
-    <version>${revision}</version>
+    <version>1.0.5</version>
     <packaging>pom</packaging>
 
     <name>Maven Get Deps Parent</name>
@@ -14,7 +14,7 @@
     <url>https://github.com/hrgdavor/maven-get-deps</url>
 
     <properties>
-        <revision>1.0.4</revision>
+        <revision>1.0.5</revision>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -59,17 +59,17 @@
             <dependency>
                 <groupId>hr.hrg</groupId>
                 <artifactId>maven-get-deps-api</artifactId>
-                <version>${project.version}</version>
+                <version>1.0.5</version>
             </dependency>
             <dependency>
                 <groupId>hr.hrg</groupId>
                 <artifactId>maven-get-deps-maven</artifactId>
-                <version>${project.version}</version>
+                <version>1.0.5</version>
             </dependency>
             <dependency>
                 <groupId>hr.hrg</groupId>
                 <artifactId>maven-get-deps-mimic</artifactId>
-                <version>${project.version}</version>
+                <version>1.0.5</version>
             </dependency>
 
             <dependency>
@@ -166,7 +166,7 @@
                 <version>1.6.0</version>
                 <configuration>
                     <updatePomFile>true</updatePomFile>
-                    <flattenMode>resolveCiFriendliesOnly</flattenMode>
+                    <flattenMode>ossrh</flattenMode>
                 </configuration>
                 <executions>
                     <execution>
@@ -240,10 +240,24 @@
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-gpg-plugin</artifactId>
                         <version>3.1.0</version>
+                        <configuration>
+                            <gpgArguments>
+                                <arg>--pinentry-mode</arg>
+                                <arg>loopback</arg>
+                            </gpgArguments>
+                            <useAgent>true</useAgent>
+                        </configuration>
                         <executions>
                             <execution>
                                 <id>sign-artifacts</id>
                                 <phase>verify</phase>
+                                <goals>
+                                    <goal>sign</goal>
+                                </goals>
+                            </execution>
+                            <execution>
+                                <id>sign-artifacts-deploy</id>
+                                <phase>deploy</phase>
                                 <goals>
                                     <goal>sign</goal>
                                 </goals>
@@ -253,20 +267,12 @@
                     <plugin>
                         <groupId>org.sonatype.central</groupId>
                         <artifactId>central-publishing-maven-plugin</artifactId>
-                        <version>0.9.0</version>
+                        <version>0.7.0</version>
                         <extensions>true</extensions>
                         <configuration>
                             <publishingServerId>central</publishingServerId>
-                            <tokenAuth>true</tokenAuth>
                             <autoPublish>true</autoPublish>
-                        </configuration>
-                    </plugin>
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-deploy-plugin</artifactId>
-                        <version>3.0.0</version>
-                        <configuration>
-                            <skip>true</skip>
+                            <waitUntil>published</waitUntil>
                         </configuration>
                     </plugin>                                  
                 </plugins>

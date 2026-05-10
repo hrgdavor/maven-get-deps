@@ -7,7 +7,7 @@
     <parent>
         <groupId>hr.hrg</groupId>
         <artifactId>maven-get-deps-parent</artifactId>
-        <version>${revision}</version>
+        <version>1.0.5</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
@@ -43,7 +43,7 @@
         <dependency>
             <groupId>hr.hrg</groupId>
             <artifactId>maven-get-deps-maven</artifactId>
-            <version>${project.version}</version>
+            <version>1.0.5</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
