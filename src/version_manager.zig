@@ -195,6 +195,14 @@ pub fn generateIndex(allocator: std.mem.Allocator, folders_file_path: []const u8
     }
 
     var entries = std.ArrayList(VersionIndex.VersionEntry).empty;
+    var seen_paths = std.StringHashMap(void).init(allocator);
+    defer {
+        var it = seen_paths.iterator();
+        while (it.next()) |kv| {
+            allocator.free(kv.key_ptr.*);
+        }
+        seen_paths.deinit();
+    }
     errdefer {
         for (entries.items) |entry| {
             allocator.free(entry.version);
@@ -218,7 +226,7 @@ pub fn generateIndex(allocator: std.mem.Allocator, folders_file_path: []const u8
         } else try std.fs.cwd().realpathAlloc(allocator, line);
         defer allocator.free(folder_path);
 
-        try scanFolder(allocator, &entries, folder_path, version_file_name, cutoff_timestamp);
+        try scanFolder(allocator, &entries, &seen_paths, folder_path, version_file_name, cutoff_timestamp);
     }
 
     if (sort_by_timestamp) {
@@ -257,27 +265,25 @@ fn versionEntryTimestampDescending(_: VersionIndexSortContext, lhs: VersionIndex
     return versionEntryNameDescending(VersionIndexSortContext{}, lhs, rhs);
 }
 
-fn scanFolder(allocator: std.mem.Allocator, entries: *std.ArrayList(VersionIndex.VersionEntry), folder_path: []const u8, version_file_name: []const u8, cutoff_timestamp: ?i64) !void {
+fn scanFolder(allocator: std.mem.Allocator, entries: *std.ArrayList(VersionIndex.VersionEntry), seen_paths: *std.StringHashMap(void), folder_path: []const u8, version_file_name: []const u8, cutoff_timestamp: ?i64) !void {
     var dir = try std.fs.cwd().openDir(folder_path, .{ .iterate = true });
     defer dir.close();
 
-    // Check if this folder itself is a version folder
-    if (try processVersionFolder(allocator, entries, folder_path, version_file_name, cutoff_timestamp)) {
-        return;
-    }
+    // Process this folder if it is a version folder, then continue scanning subfolders.
+    _ = try processVersionFolder(allocator, entries, seen_paths, folder_path, version_file_name, cutoff_timestamp);
 
-    // Otherwise, scan subfolders
+    // Scan only one nesting level (direct child folders). This is intentionally non-recursive.
     var iter = dir.iterate();
     while (try iter.next()) |entry| {
         if (entry.kind == .directory) {
             const sub_path = try std.fs.path.join(allocator, &[_][]const u8{ folder_path, entry.name });
             defer allocator.free(sub_path);
-            _ = try processVersionFolder(allocator, entries, sub_path, version_file_name, cutoff_timestamp);
+            _ = try processVersionFolder(allocator, entries, seen_paths, sub_path, version_file_name, cutoff_timestamp);
         }
     }
 }
 
-fn processVersionFolder(allocator: std.mem.Allocator, entries: *std.ArrayList(VersionIndex.VersionEntry), folder_path: []const u8, version_file_name: []const u8, cutoff_timestamp: ?i64) !bool {
+fn processVersionFolder(allocator: std.mem.Allocator, entries: *std.ArrayList(VersionIndex.VersionEntry), seen_paths: *std.StringHashMap(void), folder_path: []const u8, version_file_name: []const u8, cutoff_timestamp: ?i64) !bool {
     var dir = std.fs.cwd().openDir(folder_path, .{}) catch return false;
     defer dir.close();
 
@@ -287,12 +293,14 @@ fn processVersionFolder(allocator: std.mem.Allocator, entries: *std.ArrayList(Ve
     const v_content = try v_file.readToEndAlloc(allocator, 64 * 1024);
     defer allocator.free(v_content);
 
+    var v_info_name: ?[]const u8 = null;
     var v_info_version: ?[]const u8 = null;
     var v_info_timestamp: ?i64 = null;
     var v_info_description: ?[]const u8 = null;
 
     if (std.json.parseFromSlice(VersionInfo, allocator, v_content, .{ .ignore_unknown_fields = true })) |parsed| {
         defer parsed.deinit();
+        if (parsed.value.name) |n| v_info_name = try allocator.dupe(u8, n);
         if (parsed.value.version) |v| v_info_version = try allocator.dupe(u8, v);
         v_info_timestamp = parsed.value.timestamp;
         if (parsed.value.description) |d| v_info_description = try allocator.dupe(u8, d);
@@ -300,13 +308,26 @@ fn processVersionFolder(allocator: std.mem.Allocator, entries: *std.ArrayList(Ve
         std.debug.print("Failed to parse {s} in {s}: {any}. Using fallbacks.\n", .{ version_file_name, folder_path, err });
     }
     defer {
+        if (v_info_name) |n| allocator.free(n);
         if (v_info_version) |v| allocator.free(v);
         if (v_info_description) |d| allocator.free(d);
     }
 
     const folder_name = std.fs.path.basename(folder_path);
 
-    const version_name = if (v_info_version) |v| try allocator.dupe(u8, v) else try allocator.dupe(u8, folder_name);
+    const canonical_path = std.fs.cwd().realpathAlloc(allocator, folder_path) catch try allocator.dupe(u8, folder_path);
+    defer allocator.free(canonical_path);
+
+    if (seen_paths.contains(canonical_path)) {
+        return true;
+    }
+
+    const version_name = if (v_info_name) |n|
+        try allocator.dupe(u8, n)
+    else if (v_info_version) |v|
+        try allocator.dupe(u8, v)
+    else
+        try allocator.dupe(u8, folder_name);
     errdefer allocator.free(version_name);
 
     const path = try allocator.dupe(u8, folder_path);
@@ -324,6 +345,10 @@ fn processVersionFolder(allocator: std.mem.Allocator, entries: *std.ArrayList(Ve
         return false;
     }
 
+    const owned_key = try allocator.dupe(u8, canonical_path);
+    errdefer allocator.free(owned_key);
+    try seen_paths.put(owned_key, {});
+
     try entries.append(allocator, .{
         .version = version_name,
         .path = path,
@@ -335,6 +360,7 @@ fn processVersionFolder(allocator: std.mem.Allocator, entries: *std.ArrayList(Ve
 }
 
 pub const VersionInfo = struct {
+    name: ?[]const u8 = null,
     version: ?[]const u8 = null,
     timestamp: ?i64 = null,
     description: ?[]const u8 = null,

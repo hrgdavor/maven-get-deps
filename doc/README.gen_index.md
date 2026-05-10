@@ -36,7 +36,9 @@ Lines in the `--folders` file may already start with `./` or `../`; they are pas
 
 ## Folder Scanning Logic
 
-`gen_index` reads each directory listed in the `--folders` file and looks for immediate subdirectories that contain a `version.json` (or the specified `--version-file`).
+`gen_index` reads each directory listed in the `--folders` file, checks the directory itself, and checks only its immediate subdirectories for `version.json` (or the specified `--version-file`).
+
+Scanning is intentionally limited to one nesting level (non-recursive).
 
 ### folders.txt example
 ```text
@@ -48,11 +50,17 @@ Lines in the `--folders` file may already start with `./` or `../`; they are pas
 If a subdirectory contains this file, it is included in the index:
 ```json
 {
+  "name": "1.2.4",
   "version": "1.2.4",
   "timestamp": 1710123456,
   "description": "Optional metadata"
 }
 ```
+
+Version selection priority for generated index entries is:
+1. `name`
+2. `version`
+3. folder name (fallback)
 
 ## Integrating with version_manager
 
