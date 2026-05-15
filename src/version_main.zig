@@ -98,7 +98,7 @@ fn printUsage() void {
         \\  list                List available and recently used versions
         \\
         \\  list-names [--skip-current]
-        \\                      Print all version names, one per line, in manifest/index order.
+        \\                      Print version names one per line: current first, then manifest/index order.
         \\                      --skip-current: omit the current active version from output
         \\
         \\  touch <version-file> Update the timestamp field inside a version JSON file
@@ -210,6 +210,14 @@ fn cmdListNamesPrint(allocator: std.mem.Allocator, manifest: version_manager.Man
     var writer_struct = std.fs.File.stdout().writer(&out_buf);
     const stdout = &writer_struct.interface;
 
+    const current_version = manifest.current_version;
+
+    if (!skip_current) {
+        if (current_version) |cv| {
+            try stdout.print("{s}\n", .{cv});
+        }
+    }
+
     for (manifest.version_index) |idx_path| {
         var index = version_manager.VersionIndex.load(allocator, idx_path) catch |err| {
             std.debug.print("Warning: Failed to load index {s}: {any}\n", .{ idx_path, err });
@@ -218,11 +226,9 @@ fn cmdListNamesPrint(allocator: std.mem.Allocator, manifest: version_manager.Man
         defer index.deinit(allocator);
 
         for (index.versions) |entry| {
-            if (skip_current) {
-                if (manifest.current_version) |cv| {
-                    if (std.mem.eql(u8, entry.version, cv)) {
-                        continue;
-                    }
+            if (current_version) |cv| {
+                if (std.mem.eql(u8, entry.version, cv)) {
+                    continue;
                 }
             }
             try stdout.print("{s}\n", .{entry.version});

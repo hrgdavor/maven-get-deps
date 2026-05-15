@@ -88,12 +88,13 @@ Lists available versions from the index and provides details on the current vers
 Displays index entries, current deployment time, and the last 3 history entries with timestamps and status.
 
 ### 8. list-names
-Prints all version names in the order they appear in the manifest's index files, one per line.
+Prints version names one per line, with the current active version always first.
+After the first line, remaining versions keep the same order they appear in the manifest's index files.
 ```sh
 ./version_manager app-manifest.json list-names [--skip-current]
 ```
 `--skip-current` omits the current active version from the output.
-This is useful for scripting or picking version names without extra metadata.
+This is useful for scripting or for select boxes where the active version is known externally and needs to be excluded from choice list.
 
 ### 9. touch
 Updates the `timestamp` field inside a version JSON file to keep static versions fresh.
